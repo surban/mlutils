@@ -13,35 +13,60 @@ def multiglob(*patterns):
         glob.glob(pattern) for pattern in patterns)
 
 
-def load_cfg(clean_outputs=False, prepend_scriptname=True, with_checkpoint=False, defaults={}):
+def base_dir():
+    """Finds the path to the base directory of the main module.
+     The base directory is the first parent directory of the main module or,
+     if no main module is loaded, the current directory, that contains a 'cfgs' subdirectory.
+    :returns: path to the base directory"""
+    try:
+        p = os.path.dirname(main.__file__)
+    except AttributeError:
+        p = ""
+    while not os.path.isdir(os.path.join(p, "cfgs")):
+        p = os.path.join(p, "..")
+        if len(p) > 500:
+            raise RuntimeError("Cannot find base directory (contains a 'cfgs' subdirectory)")
+    return p
+
+
+def cfgs_dir():
+    """Finds the path to the configuration directory.
+    :returns: path to the configuration directory"""
+    return os.path.join(base_dir(), "cfgs")
+
+
+def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=False, defaults={}):
     """Reads the configuration file cfg.py from the configuration directory
     specified as the first parameter on the command line.
     Returns a tuple consisting of the configuration module and the plot directory.
     :param clean_outputs: plot and data files are removed from the config directory
-    :param prepend_scriptname: prepend script name as subdirectory for config file
+    :param prepend: Prepend subdirectory for config file. Use %SCRIPTNAME% to insert name of running script.
     :param with_checkpoint: enables checkpoint support
     :param defaults: default values for non-specified configuration variables
     :returns: if with_checkpoint == True:  (cfg module, cfg directory, checkpoint handler, checkpoint)
               if with_checkpoint == False: (cfg module, cfg directory)
     """
-    if len(sys.argv) < 2:
-        if with_checkpoint:
-            print "Usage: %s <config> [continue]" % sys.argv[0]
+    if config_name is None:
+        if len(sys.argv) < 2:
+            if with_checkpoint:
+                print "Usage: %s <config> [continue]" % sys.argv[0]
+            else:
+                print "Usage: %s <config>" % sys.argv[0]
+            sys.exit(1)
         else:
-            print "Usage: %s <config>" % sys.argv[0]
-        sys.exit(1)
+            config_name = sys.argv[1]
 
-    scriptname, scriptext = os.path.splitext(os.path.basename(main.__file__))
-    print "Script: %s" % (scriptname + scriptext)
+    try:
+        scriptname, scriptext = os.path.splitext(os.path.basename(main.__file__))
+        print "Script: %s" % (scriptname + scriptext)
+    except AttributeError:
+        scriptname = "unknown"
 
-    if prepend_scriptname:
-        cfgdir = os.path.join(scriptname, sys.argv[1])
-    else:
-        cfgdir = sys.argv[1]
+    prepend = prepend.replace("%SCRIPTNAME%", scriptname)
+    cfgdir = os.path.join(cfgs_dir(), prepend, config_name)
     cfgname = os.path.join(cfgdir, 'cfg.py')
     if not os.path.exists(cfgname):
-        print "Config: %s not found" % cfgname
-        sys.exit(2)
+        raise RuntimeError("Config: %s not found" % cfgname)
     print "Config: %s" % cfgname
     sys.dont_write_bytecode = True
     cfg = imp.load_source('cfg', cfgname)
