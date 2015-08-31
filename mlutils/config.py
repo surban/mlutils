@@ -1,3 +1,4 @@
+from inspect import getargspec
 import os
 import sys
 import glob
@@ -6,6 +7,7 @@ import pickle
 import signal
 import itertools
 import __main__ as main
+import climin
 
 
 def multiglob(*patterns):
@@ -99,6 +101,45 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         return cfg, cfgdir, cp_handler, checkpoint
     else:
         return cfg, cfgdir
+
+
+def optimizer_from_cfg(cfg, wrt, f, fprime):
+    # get specified optimizer and its constructor
+    class_name = 'climin.' + cfg.optimizer
+    class_obj = eval(class_name)
+    init_func = eval(class_name + '.__init__')
+
+    # build constructor arguments
+    args = getargspec(init_func).args
+    kwargs = {}
+    for arg in args[1:]:
+        if arg == 'wrt':
+            kwargs['wrt'] = wrt
+        elif arg == 'f':
+            if f is None:
+                raise ValueError("optimizer requires f, but it was not specified")
+            kwargs['f'] = f
+        elif arg == 'fprime':
+            kwargs['fprime'] = fprime
+        else:
+            cfg_arg = 'optimizer_' + arg
+            if cfg_arg in dir(cfg):
+                kwargs[arg] = getattr(cfg, cfg_arg)
+
+    return class_obj(**kwargs)
+
+
+    if cfg.optimizer == 'rprop':
+        return climin.Rprop(wrt, fprime,
+                            step_shrink=cfg.step_shrink, max_step=cfg.max_step)
+    elif cfg.optimizer == 'rmsprop':
+        return climin.RmsProp(wrt, fprime,
+                              step_rate=cfg.step_rate, momentum=cfg.momentum)
+    elif cfg.optimizer == 'gradient_descent':
+        return climin.GradientDescent(wrt, fprime,
+                                      step_rate=cfg.step_rate, momentum=cfg.momentum)
+    else:
+        raise ValueError("unknown optimizer: %s" % cfg.optimizer)
 
 
 class CheckpointHandler(object):
