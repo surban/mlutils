@@ -28,7 +28,7 @@ class DependentObject(object):
         Adds a dependant object.
         :param dependant: the dependant object
         """
-        if not issubclass(dependant, DependentObject):
+        if not isinstance(dependant, DependentObject):
             raise TypeError("depandent must be a DependentObject")
         self._dependants.append(dependant)
 
@@ -79,7 +79,7 @@ def sort_by_dependencies(dependent_objs):
     :rtype: list[DependentObject]
     """
     for d in dependent_objs:
-        if not issubclass(d, DependentObject):
+        if not isinstance(d, DependentObject):
             raise TypeError("dependent_objs must be a list of DependentObjects")
 
     def compare(a, b):
@@ -101,10 +101,24 @@ class Parameter(DependentObject):
         self.only_for = {}
 
     def should_scan(self, upper_values):
-        for pname, values in self.only_for:
+        for pname, values in self.only_for.iteritems():
             if upper_values[pname] not in values:
                 return False
         return True
+
+    def __repr__(self):
+        s = str(self.values)
+        if len(self.only_for.keys()) > 0:
+            s += " (only for %s)" % str(self.only_for)
+        return s
+
+
+class GridGroup(object):
+    def __init__(self, value, dependent_parameters):
+        if not isinstance(dependent_parameters, list):
+            raise TypeError("dependent_parameters must be a list of dependent parameters")
+        self.value = value
+        self.dependent_parameteres = dependent_parameters
 
 
 class GridSearch(object):
@@ -120,6 +134,7 @@ class GridSearch(object):
         self._check_parameters()
 
     def _parse_parameters(self, para_strs, only_for):
+        only_for = only_for.copy()
         parameters = {}
         for p, rng_spec in para_strs.iteritems():
             try:
@@ -130,6 +145,14 @@ class GridSearch(object):
                     for e in rng_spec:
                         if isinstance(e, basestring):
                             val.extend(self._parse_rng_str(e))
+                        elif isinstance(e, GridGroup):
+                            val.append(e.value)
+                            for dep in e.dependent_parameteres:
+                                if dep not in only_for:
+                                    only_for[dep] = {}
+                                if p not in only_for[dep]:
+                                    only_for[dep][p] = []
+                                only_for[dep][p].append(e.value)
                         else:
                             val.append(e)
                 pname = p.upper()
@@ -144,6 +167,15 @@ class GridSearch(object):
                 raise GridSearchError("could not parse parameter %s: %s" % (p, e.message))
 
         # add parameter dependencies
+        for p, forspec in only_for.iteritems():
+            pname = p.upper()
+            if pname not in parameters:
+                raise GridSearchError("only_for or GridGroup specified for parameter %s without range specification"
+                                      % pname)
+            for name, value in forspec.iteritems():
+                if not isinstance(value, list):
+                    value = [value]
+                parameters[pname].only_for[name] = value
         for spec in parameters.itervalues():
             for depname in spec.only_for.iterkeys():
                 parameters[depname].add_dependant(spec)
@@ -194,7 +226,7 @@ class GridSearch(object):
         used_but_not_specified = used_params - specified_params
         if used_but_not_specified:
             raise GridSearchError("parameter(s) %s used in template but no range was specified" %
-                                  str(used_but_not_specified))
+                                  str(list(used_but_not_specified)))
         specified_but_not_used = specified_params - used_params
         if specified_but_not_used:
             warn("parameter(s) %s specified but not used in template" % str(specified_but_not_used))
@@ -229,11 +261,11 @@ class GridSearch(object):
             yield {}
 
     def generate(self):
-        plist = self._parameters.keys()
-        plist = sort_by_dependencies(plist)
+        plist = sort_by_dependencies(self._parameters.values())
+        pnames = [p.name for p in plist]
         cfg_index = 0
 
-        for p_vals in self._generate_rec(plist):
+        for p_vals in self._generate_rec(pnames, {}):
             cfg_index += 1
             p_vals["CFG_INDEX"] = "%05d" % cfg_index
 
@@ -249,7 +281,7 @@ class GridSearch(object):
                 f.write(data)
 
 
-def gridsearch(name, template, parameter_ranges):
+def gridsearch(name, template, parameter_ranges, only_for={}):
     GridSearch(name, template, parameter_ranges).generate()
 
 

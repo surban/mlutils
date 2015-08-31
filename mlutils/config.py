@@ -129,19 +129,6 @@ def optimizer_from_cfg(cfg, wrt, f, fprime):
     return class_obj(**kwargs)
 
 
-    if cfg.optimizer == 'rprop':
-        return climin.Rprop(wrt, fprime,
-                            step_shrink=cfg.step_shrink, max_step=cfg.max_step)
-    elif cfg.optimizer == 'rmsprop':
-        return climin.RmsProp(wrt, fprime,
-                              step_rate=cfg.step_rate, momentum=cfg.momentum)
-    elif cfg.optimizer == 'gradient_descent':
-        return climin.GradientDescent(wrt, fprime,
-                                      step_rate=cfg.step_rate, momentum=cfg.momentum)
-    else:
-        raise ValueError("unknown optimizer: %s" % cfg.optimizer)
-
-
 class CheckpointHandler(object):
     def __init__(self, directory, filename="checkpoint.dat"):
         self._path = os.path.join(directory, filename)
