@@ -1,3 +1,4 @@
+import ctypes
 from inspect import getargspec
 import os
 import sys
@@ -7,6 +8,7 @@ import pickle
 import signal
 import itertools
 import __main__ as main
+from os.path import isfile
 import climin
 
 
@@ -51,7 +53,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     if config_name is None:
         if len(sys.argv) < 2:
             if with_checkpoint:
-                print "Usage: %s <config> [continue]" % sys.argv[0]
+                print "Usage: %s <config> [restart]" % sys.argv[0]
             else:
                 print "Usage: %s <config>" % sys.argv[0]
             sys.exit(1)
@@ -77,8 +79,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     checkpoint = None
     if with_checkpoint:
         cp_handler = CheckpointHandler(cfgdir)
-        if (('JOB_REQUEUED' in os.environ and os.environ['JOB_REQUEUED'] == 'yes') or
-            (len(sys.argv) >= 3 and sys.argv[2].startswith("cont"))):
+        if (cp_handler.exists and not (len(sys.argv) >= 3 and sys.argv[2] == "restart")):
             checkpoint = cp_handler.load()
         else:
             print "Checkpoint: none"
@@ -135,12 +136,31 @@ class CheckpointHandler(object):
         self._directory = directory
         self._requested = False
 
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGBREAK, self._signal_handler)
+        if sys.platform == 'win32':
+            # load Fortran DLLs before setting our own console control handler
+            # because they replace it with their own handler
+            basepath = imp.find_module('numpy')[1]
+            ctypes.CDLL(os.path.join(basepath, 'core', 'libmmd.dll'))
+            ctypes.CDLL(os.path.join(basepath, 'core', 'libifcoremd.dll'))
+
+            # install win32 console control event handler
+            import win32api
+            win32api.SetConsoleCtrlHandler(self._console_ctrl_handler, 1)
+        else:
+            # install unix signal handlers
+            signal.signal(signal.SIGINT, self._signal_handler)
+            signal.signal(signal.SIGBREAK, self._signal_handler)
 
     def _signal_handler(self, signum, frame):
         print "Checkpoint: requested by termination signal"
         self._requested = True
+
+    def _console_ctrl_handler(self, ctrl_type):
+        if ctrl_type in [0, 1]:  # Ctrl-C or Ctrl-Break
+            print "Checkpoint: requested by termination signal"
+            self._requested = True
+            return 1  # don't chain to the next handler
+        return 0  # chain to the next handler
 
     @staticmethod
     def _replace_file(src, dest):
@@ -170,10 +190,15 @@ class CheckpointHandler(object):
             sys.exit(9)
 
     def load(self):
-        print "Checkpoint: loading %s" % self._path
+        print "Checkpoint: %s" % self._path
         with open(self._path, 'rb') as f:
             return pickle.load(f)
 
     def remove(self):
         if os.path.exists(self._path):
             os.remove(self._path)
+
+    @property
+    def exists(self):
+        return isfile(self._path)
+

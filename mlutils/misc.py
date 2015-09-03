@@ -25,7 +25,8 @@ def isfinite(x):
 
 
 def get_key():
-    if sys.platform == 'nt':
+    if sys.platform == 'win32':
+        import msvcrt
         if msvcrt.kbhit():
             return msvcrt.getch()
         else:
