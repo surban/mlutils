@@ -1,3 +1,4 @@
+from socket import gethostname
 import ctypes
 from inspect import getargspec
 import os
@@ -59,6 +60,8 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
             sys.exit(1)
         else:
             config_name = sys.argv[1]
+
+    print "Host: %s" % gethostname()
 
     try:
         scriptname, scriptext = os.path.splitext(os.path.basename(main.__file__))
