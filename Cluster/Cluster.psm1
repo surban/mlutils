@@ -74,10 +74,10 @@ function New-HpcJobFromDirectory
         $job = New-HpcJob -Name "${project}: $cfgname" -Project $project 
         
         # set job properties from config file
-        if ($cfg.TemplateName) { Set-HpcJob -Job $job -TemplateName $cfg.TemplateName }
-        if ($cfg.NodeGroups) { Set-HpcJob -Job $job -NodeGroupOp Intersect -NodeGroups $cfg.NodeGroups }
-        if ($cfg.ExcludedNodes) { Set-HpcJob -Job $job -AddExcludedNodes $cfg.ExcludedNodes }
-        if ($cfg.EstimatedProcessMemory) { Set-HpcJob -Job $job -EstimatedProcessMemory $cfg.EstimatedProcessMemory }
+        if ($cfg.TemplateName) { $job = Set-HpcJob -Job $job -TemplateName $cfg.TemplateName }
+        if ($cfg.NodeGroups) { $job = Set-HpcJob -Job $job -NodeGroupOp Intersect -NodeGroups $cfg.NodeGroups }
+        if ($cfg.ExcludedNodes) { $job = Set-HpcJob -Job $job -AddExcludedNodes $cfg.ExcludedNodes }
+        if ($cfg.EstimatedProcessMemory) { $job = Set-HpcJob -Job $job -EstimatedProcessMemory $cfg.EstimatedProcessMemory }
         if ($cfg.JobEnv) 
         { 
             $JobEnv = $cfg.JobEnv | ForEach-Object {Perform-Substitutions $_ $basedir $directory}

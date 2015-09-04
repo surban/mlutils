@@ -296,4 +296,11 @@ def remove_index_dirs():
             except ValueError:
                 continue
 
-            shutil.rmtree(filename)
+            for i in range(10):
+                try:
+                    shutil.rmtree(filename)
+                except:
+                    pass
+                break
+
+
