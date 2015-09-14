@@ -51,12 +51,10 @@ function New-HpcJobFromDirectory
 {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$false)]
-        [string] $directory
+        [Parameter(Mandatory=$false)] [string] $directory = $(Get-Location).Path
     )
     Process
     {
-        if (-not $directory) { $directory = $(Get-Location).Path }
         $directory = $(Resolve-Path $directory).ProviderPath
         $directory = ToUNCPath $directory
 
@@ -105,8 +103,7 @@ function Submit-HpcJobFromDirectory
 {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$false)]
-        [string] $directory
+        [Parameter(Mandatory=$false)] [string] $directory = $(Get-Location).Path
     )
     Process
     {
@@ -116,7 +113,29 @@ function Submit-HpcJobFromDirectory
 }
 
 
+function Clear-Checkpoints
+{
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$false)] [string] $directory = $(Get-Location).Path,
+        [Parameter(Mandatory=$false)] [string] $filename = "checkpoint.dat"
+    )
+    Process
+    {
+        $dirs = Get-ChildItem $directory -Directory
+        foreach ($dir in $dirs)
+        {
+            $path = Join-Path $dir $filename
+            if (Test-Path $path) 
+            {
+                Remove-Item -Force $path
+            }
+        }        
+    }
+}
+
 Export-ModuleMember -Function New-HpcJobFromDirectory
 Export-ModuleMember -Function Submit-HpcJobFromDirectory
+Export-ModuleMember -Function Clear-Checkpoints
 
 
