@@ -132,11 +132,13 @@ class ParameterHistory(object):
         """
         if 'figsize' in dir(plt):
             plt.figsize(10, 5)
-        # plt.clf()
         plt.hold(True)
         if logscale:
-            plt.yscale('log')
-            # plt.xscale('log')
+            try:
+                plt.yscale('log')
+                # plt.xscale('log')
+            except ValueError:
+                pass
         plt.plot(self.history[0], self.history[1], 'b')
         plt.plot(self.history[0], self.history[2], 'c')
         plt.plot(self.history[0], self.history[3], 'r')
