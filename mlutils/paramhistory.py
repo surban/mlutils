@@ -1,9 +1,11 @@
+from glob import glob
 import json
 import time
+from types import ModuleType
 import matplotlib.pyplot as plt
 import numpy as np
 import gnumpy as gp
-from os.path import join
+from os.path import join, split
 from mlutils.gpu import gather, post
 import progress
 from misc import get_key
@@ -13,7 +15,8 @@ class ParameterHistory(object):
     """Keeps track of parameter history, corresponding loses and optimization
     termination criteria."""
 
-    def __init__(self, show_progress=True, state_dir=None,
+    def __init__(self, cfg=None,
+                 show_progress=True, state_dir=None,
                  desired_loss=None,
                  max_iters=None, min_iters=None,
                  max_missed_val_improvements=200, min_improvement=0.00001):
@@ -24,6 +27,7 @@ class ParameterHistory(object):
         Call add for each performed iteration.
         Exit the training loop if should_terminate becomes True.
         Call finish once the training loop has been exited.
+        :param cfg: configuration dictionary or module
         :param show_progress: if True, loss is printed during training
         :param state_dir: directory where results and plots are saved
         :param desired_loss: loss that should lead to immediate termination of training when reached
@@ -33,6 +37,12 @@ class ParameterHistory(object):
         before training is terminated
         :param min_improvement: minimum change in loss to count as improvement
         """
+        if cfg is None:
+            self.cfg = {}
+        elif isinstance(cfg, ModuleType):
+            self.cfg = cfg_module_to_dict(cfg)
+        else:
+            self.cfg = dict(cfg)
         self.show_progress = show_progress
         self.state_dir = state_dir
 
@@ -185,7 +195,8 @@ class ParameterHistory(object):
                        'training_time': self.training_time,
                        'start_time': self.start_time,
                        'end_time': self.end_time,
-                       'termination_reason': self.termination_reason},
+                       'termination_reason': self.termination_reason,
+                       'cfg': self.cfg},
                       results_file, indent=4)
 
     @classmethod
@@ -207,7 +218,22 @@ class ParameterHistory(object):
             self.start_time = data['start_time']
             self.end_time = data['end_time']
             self.termination_reason = data['termination_reason']
+            self.cfg = data['cfg']
         return self
+
+    @classmethod
+    def load_resultset(cls, base_dir):
+        """
+        Loads all results from the subdirectories of base_dir.
+        :param base_dir:
+        :return:
+        """
+        his = {}
+        for results_filename in glob(join(base_dir, "*", "results.json")):
+            results_dir, _ = split(results_filename)
+            _, cfg_name = split(results_dir)
+            his[cfg_name] = cls.load(results_dir)
+        return his
 
     def finish(self):
         """
@@ -218,9 +244,10 @@ class ParameterHistory(object):
 
         # print statistics
         if self.best_iter is not None:
-            print "Best iteration %5d with validation loss %9.5f and test loss: %9.5f" % \
+            print "Best iteration %5d with validation loss %9.5f and test loss %9.5f" % \
                   (self.best_iter, self.best_val_loss, self.best_tst_loss)
-            print "Training took %.2f s" % (self.end_time - self.start_time)
+            print "Training took %.2f s and was terminated because %s." % (self.end_time - self.start_time,
+                                                                           self.termination_reason)
 
         # save results
         self.save()
@@ -229,3 +256,17 @@ class ParameterHistory(object):
         plt.figure()
         self.plot()
         plt.savefig(join(self.state_dir, "loss.pdf"))
+
+
+def cfg_module_to_dict(mod):
+    """
+    Constructs a dictionary from all variables in a module.
+    :param mod: the module
+    :return: dictionary of all variables in the module
+    """
+    cfg = {}
+    for name in dir(mod):
+        val = getattr(mod, name)
+        if isinstance(val, (int, float, long, basestring, bool)) and not name.startswith('__'):
+            cfg[name] = val
+    return cfg
