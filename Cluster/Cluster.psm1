@@ -193,12 +193,16 @@ function New-HpcJobFromDirectory
                 continue 
             }
 
-            $task = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir `
-                -CommandLine "$RunCommand $cfginstname" -Rerunnable $true
-            if (-not $NoRedirect)
+            if (-not $NoRedirect) 
             {
-                $outfile = Join-Path $dir.FullName $OutputFilename
-                $task = Set-HpcTask -Task $task -Stdout $outfile -Stderr $outfile
+                $outfile = Join-Path $dir.FullName $OutputFilename 
+                $job = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir -Stdout $outfile -Stderr $outfile `
+                    -CommandLine "$RunCommand $cfginstname" -Rerunnable $true                
+            }
+            else
+            {
+                $job = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir `
+                    -CommandLine "$RunCommand $cfginstname" -Rerunnable $true
             }
         }
 
