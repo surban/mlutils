@@ -69,3 +69,20 @@ def cmul(a_re, a_im, b_re, b_im):
     mul_re = a_re * b_re - a_im * b_im
     mul_im = a_im * b_re + a_re * b_im
     return mul_re, mul_im
+
+def cdiv(a_re, a_im, b_re, b_im):
+    """
+    Compute the division of two complex numbers given bei their real and
+    imaginary part
+    :param a_re: real part of the first complex number
+    :param a_im: imaginary part of the first complex number
+    :param b_re: real part of the second complex number(s)
+    :param b_im: imaginary part of the first complex number(s)
+    :return: division of a_re + a_im by b_re + b_im
+    """
+    # (a + ib)/(c + id) = [(ac + bd) + i(bc - ad)] / (c^2 + d^2)
+    # where a_re = a, a_im = b, b_re = c, b_im = d
+    denom = b_re * b_re + b_im * b_im
+    div_re = (a_re * b_re + a_im * b_im) / denom
+    div_im = - (a_im * b_re + a_re * b_im) / denom
+    return div_re, div_im
