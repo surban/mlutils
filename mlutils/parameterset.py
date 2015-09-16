@@ -291,13 +291,13 @@ class ParameterSet(object):
         # specific), the second either a gnumpy or numpy array (depending on
         # GPU/CPU again). Also set a default size for testing.
         if GPU:
-            self.data = gnumpy.zeros(self.n_pars)
-            self.flat = theano.sandbox.cuda.fvector('parameters')
+            self._data = gnumpy.zeros(self.n_pars)
+            self._flat = theano.sandbox.cuda.fvector('parameters')
         else:
-            self.data = np.empty(self.n_pars).astype(theano.config.floatX)
-            self.flat = T.vector('parameters')
+            self._data = np.empty(self.n_pars).astype(theano.config.floatX)
+            self._flat = T.vector('parameters')
 
-        self.flat.tag.test_value = self.data
+        self._flat.tag.test_value = self._data
 
         # Go through parameters and assign space and variable.
         self.views = {}
@@ -310,13 +310,13 @@ class ParameterSet(object):
                 raise ValueError("%s is an illegal name for a variable")
 
             # Get the region from the big flat array.
-            region = self.data[n_used:n_used + size]
+            region = self._data[n_used:n_used + size]
             # Then shape it correctly and make it accessible from the outside.
             region = region.reshape(shape)
             self.views[key] = region
 
             # Get the right variable as a subtensor.
-            var = self.flat[n_used:n_used + size].reshape(shape)
+            var = self._flat[n_used:n_used + size].reshape(shape)
             var.name = key
             setattr(self, key, var)
 
@@ -327,6 +327,16 @@ class ParameterSet(object):
         """All Theano vectors can be accessed by with their identifier as key
         in this dictionary."""
         return {k: getattr(self, k) for k in self.views.iterkeys()}
+
+    @property
+    def data(self):
+        """Actual numerical data values (numpy array) of this ParameterSet"""
+        return self._data
+
+    @property
+    def flat(self):
+        """Symbolic Theano variable corresponding to the values of this ParameterSet"""
+        return self._flat
 
     def __contains__(self, key):
         return key in self.views
