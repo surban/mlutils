@@ -87,3 +87,16 @@ class WarnNaNMode(theano.Mode):
         super(WarnNaNMode, self).__init__(
             wrap_linker, optimizer='fast_compile')
 
+
+class Output2Floats(object):
+    """
+    Needed for Theano's scalar ops with two outputs to avoid using
+    scalar.upgrade_to_float or upcast_out (which both always return one value)
+    """
+    def __new__(self, *types):
+        type = types[0]
+        if type in theano.scalar.float_types:
+            return [type, type]
+        else:
+            return [theano.config.floatX, theano.config.floatX]
+
