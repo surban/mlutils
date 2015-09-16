@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import gnumpy as gp
 from os.path import join, split
+import sys
 from mlutils.gpu import gather, post
 import progress
 from misc import get_key
@@ -218,7 +219,10 @@ class ParameterHistory(object):
             self.start_time = data['start_time']
             self.end_time = data['end_time']
             self.termination_reason = data['termination_reason']
-            self.cfg = data['cfg']
+            if 'cfg' in data:
+                self.cfg = data['cfg']
+            else:
+                self.cfg = {}
         return self
 
     @classmethod
@@ -257,6 +261,16 @@ class ParameterHistory(object):
         self.plot()
         plt.savefig(join(self.state_dir, "loss.pdf"))
 
+        # change directory icon to indicate that task is finished
+        if sys.platform == 'win32':
+            import win32api, win32con
+            desktopfile = join(self.state_dir, "desktop.ini")
+            win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_NORMAL)
+            with open(desktopfile, 'w') as df:
+                df.write("[.ShellClassInfo]\n")
+                df.write("IconResource=C:\\WINDOWS\\system32\\SHELL32.dll,144\n")
+            win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_SYSTEM | win32con.FILE_ATTRIBUTE_HIDDEN)
+            win32api.SetFileAttributes(self.state_dir, win32con.FILE_ATTRIBUTE_READONLY)
 
 def cfg_module_to_dict(mod):
     """
