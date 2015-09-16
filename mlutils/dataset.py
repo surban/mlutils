@@ -4,9 +4,17 @@ from mlutils.gpu import post
 
 
 class Dataset(object):
-    """Dataset handler"""
+    """A dataset consisting of training, test and validation set."""
 
     def __init__(self, filename, fractions=[0.8, 0.1, 0.1], minibatch_size=100, pad_data=False, seed=1):
+        """
+        Loads a dataset from a .npz file and partitions it into training, test and validation set.
+        :param filename: file that contains the dataset
+        :param fractions: split fractions for training, validation, test
+        :param minibatch_size: minibatch set
+        :param pad_data: if True, data is padded so that all variables have the same size
+        :param seed: random seed for splitting dataset into training, validation and test set
+        """
         self._filename = filename
         self._fractions = fractions
         self._minibatch_size = int(minibatch_size)
@@ -45,15 +53,20 @@ class Dataset(object):
 
         # partitions
         self.trn = self.Paratition(ds, idx_trn, self._minibatch_size, self._pad_data)
+        """Training set partition"""
         self.val = self.Paratition(ds, idx_val, self._minibatch_size, self._pad_data)
+        """Validation set partition"""
         self.tst = self.Paratition(ds, idx_tst, self._minibatch_size, self._pad_data)
+        """Test set partition"""
 
     def print_info(self):
+        """Prints info about this dataset"""
         print "Dataset: %s  (%d training, %d validation, %d test samples)" % \
               (self._filename, self.trn.n_samples, self.val.n_samples, self.tst.n_samples)
 
     class Paratition(object):
-        """A dataset partition (train / validation / test)"""
+        """A dataset partition (train / validation / test).
+        Records from the dataset .npz file are exposed as members."""
         def __init__(self, ds, idx, minibatch_size, pad_data):
             self._keys = ds.keys()
             self._minibatch_size = minibatch_size
@@ -77,6 +90,11 @@ class Dataset(object):
                 return paded_data
 
         def minibatch(self, n):
+            """
+            Returns the n-th minibatch.
+            :param n: the index of the minibatch
+            :return: the n-th minibatch
+            """
             n = int(n)
             if n < 0 or n > self.n_minibatches:
                 raise ValueError("minibatch out of range")
@@ -84,9 +102,13 @@ class Dataset(object):
 
         @property
         def n_minibatches(self):
+            """Number of minibatches"""
             return int(ceil(self.n_samples / self._minibatch_size))
 
     class Minibatch(object):
+        """Minibatch of a dataset partition (train / validation / test).
+        Records from the dataset .npz file are exposed as members."""
+
         def __init__(self, partition, b, e):
             if e > partition.n_samples:
                 e = partition.n_samples
