@@ -3,6 +3,7 @@ from mlutils.gpu import post, gather
 
 
 class ModelFuncs(object):
+    """Base class for callable functions of a Theano model."""
 
     def __init__(self, model, dataset):
         self.model = model
