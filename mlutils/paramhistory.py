@@ -5,7 +5,7 @@ from types import ModuleType
 import matplotlib.pyplot as plt
 import numpy as np
 import gnumpy as gp
-from os.path import join, split
+from os.path import join, split, exists
 import sys
 from mlutils.gpu import gather, post
 import progress
@@ -263,14 +263,18 @@ class ParameterHistory(object):
 
         # change directory icon to indicate that task is finished
         if sys.platform == 'win32':
-            import win32api, win32con
-            desktopfile = join(self.state_dir, "desktop.ini")
-            win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_NORMAL)
-            with open(desktopfile, 'w') as df:
-                df.write("[.ShellClassInfo]\n")
-                df.write("IconResource=C:\\WINDOWS\\system32\\SHELL32.dll,144\n")
-            win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_SYSTEM | win32con.FILE_ATTRIBUTE_HIDDEN)
-            win32api.SetFileAttributes(self.state_dir, win32con.FILE_ATTRIBUTE_READONLY)
+            try:
+                import win32api, win32con
+                desktopfile = join(self.state_dir, "desktop.ini")
+                if exists(desktopfile):
+                    win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_NORMAL)
+                with open(desktopfile, 'w') as df:
+                    df.write("[.ShellClassInfo]\n")
+                    df.write("IconResource=C:\\WINDOWS\\system32\\SHELL32.dll,144\n")
+                win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_SYSTEM | win32con.FILE_ATTRIBUTE_HIDDEN)
+                win32api.SetFileAttributes(self.state_dir, win32con.FILE_ATTRIBUTE_READONLY)
+            except Exception, e:
+                print "Could not write desktop.ini: ", e
 
 def cfg_module_to_dict(mod):
     """
