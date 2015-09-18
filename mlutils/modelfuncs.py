@@ -1,13 +1,20 @@
 import numpy as np
+from mlutils.config import optimizer_from_cfg
+from mlutils.dataset import Dataset
 from mlutils.gpu import post, gather
+from mlutils.paramhistory import ParameterHistory
 
 
 class ModelFuncs(object):
     """Base class for callable functions of a Theano model."""
 
-    def __init__(self, model, dataset):
+    def __init__(self, model, cfg, dataset=None):
         self.model = model
-        self.dataset = dataset
+        self.cfg = cfg
+        if dataset is not None:
+            self.dataset = dataset
+        else:
+            self.dataset = Dataset(self.cfg.dataset, minibatch_size=self.cfg.minibatch_size)
 
         self._minibatch_idx = 0
         self._minibatch = None
@@ -56,3 +63,100 @@ class ModelFuncs(object):
         """Saves the parameters of the ParameterSet of the model to the given file."""
         np.savez_compressed(filename, ps=gather(self.ps.data))
 
+    def loss(self, pv, dataset):
+        """Calculates the loss on the given dataset with the given parameteres.
+        :param pv: parameter values
+        :param dataset: dataset to calculate loss on
+        """
+        raise NotImplementedError("loss must be implemented for the specific model")
+
+    def loss_grad(self, pv, dataset):
+        """Calculates the gradient of the loss w.r.t. the parameters on the given dataset.
+        :param pv: parameter values
+        :param dataset: dataset to calculate loss on
+        """
+        raise NotImplementedError("loss_grad must be implemented for the specific model")
+
+    def mb_loss(self, pv):
+        """Calculates the loss on the current dataset with the given parameters.
+        :param pv: parameter values"""
+        return self.loss(pv, self.minibatch)
+
+    def mb_loss_grad(self, pv):
+        """Calculates the gradient of the loss on the current dataset with the given parameters.
+        :param pv: parameter values"""
+        return self.loss_grad(pv, self.minibatch)
+
+    @property
+    def trn_loss(self):
+        """Loss on the whole training set using the current parameters."""
+        return gather(self.loss(self.ps.data, self.dataset.trn))
+
+    @property
+    def val_loss(self):
+        """Loss on the whole validation set using the current parameters."""
+        return gather(self.loss(self.ps.data, self.dataset.val))
+
+    @property
+    def tst_loss(self):
+        """Loss on the whole test set using the current parameters."""
+        return gather(self.loss(self.ps.data, self.dataset.tst))
+
+    def record_loss(self, history, iter):
+        """
+        Records the current losses in the specified ParameterHistory object
+        and checks if training should be terminated.
+        :param iter: the iteration number
+        :param history: the ParameterHistory object that should store the loss
+        :type history: ParameterHistory
+        :return: true, if training should be terminated, false other.
+        """
+        history.add(iter, self.ps.data, self.trn_loss, self.val_loss, self.tst_loss)
+        return history.should_terminate
+
+    def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10):
+        """
+        Generic training procedure.
+        :param cfg_dir: configuration directory
+        :param checkpoint: checkpoint
+        :param checkpoint_handler: checkpoint handler
+        :param loss_record_interval: number of iterations between calculating and recording losses
+        :return: ParameterHistory object of training
+        """
+        # create optimizer
+        opt = optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, self.mb_loss_grad)
+
+        # initialize or restore checkpoint, if available
+        if not checkpoint:
+            self.init_parameters()
+            his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters)
+            iter = 0
+        else:
+            self.ps.data[:] = post(checkpoint['data'])
+            his = checkpoint['his']
+            his.state_dir = cfg_dir
+            iter = checkpoint['iter']
+
+        # do training
+        if not his.should_terminate:
+            print "Training..."
+            for sts in opt:
+                if self.next_minibatch():
+                    # iteration finished
+                    iter += 1
+
+                    # calculate losses
+                    if iter % loss_record_interval == 0:
+                        if self.record_loss(his, iter):
+                            break
+
+                # save checkpoint if necessary
+                if checkpoint_handler and checkpoint_handler.requested:
+                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter)
+
+        # save results and plot loss
+        if checkpoint_handler:
+            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
+        his.finish()
+
+        return his
