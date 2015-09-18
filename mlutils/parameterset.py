@@ -27,55 +27,6 @@ if GPU:
     import gnumpy
 
 
-def lookup(what, where, default=None):
-    """Return ``where.what`` if what is a string, otherwise what. If not found
-    return ``default``."""
-    if isinstance(what, (str, unicode)):
-        res = getattr(where, what, default)
-    else:
-        res = what
-    return res
-
-
-def lookup_some_key(what, where, default=None):
-    """Given a list of keys ``what``, return the first of those to which there
-    is an item in ``where``.
-
-    If nothing is found, return ``default``.
-    """
-    for w in what:
-        try:
-            return where[w]
-        except KeyError:
-            pass
-    return default
-
-
-def opt_from_model(model, fargs, args, opt_klass, opt_kwargs):
-    """Return an optimizer object given a model and an optimizer specification.
-    """
-    d_loss_d_pars = T.grad(model.exprs['loss'], model.parameters.flat)
-    f = model.function(fargs, 'loss', explicit_pars=True)
-    fprime = model.function(fargs, d_loss_d_pars, explicit_pars=True)
-    opt = opt_klass(model.parameters.data, f, fprime, args=args, **opt_kwargs)
-    return opt
-
-
-def theano_expr_bfs(expr):
-    """Generator function to walk a Theano expression graph in breadth first."""
-    stack = [expr]
-    while True:
-        if not stack:
-            break
-        expr = stack.pop()
-        stack += expr.owner.inputs if hasattr(expr.owner, 'inputs') else []
-        yield expr
-
-
-def tell_deterministic(expr):
-    """Return True iff no random number generator is in the expression graph."""
-    return all(not hasattr(i, 'rng') for i in theano_expr_bfs(expr))
-
 
 class ParameterSet(object):
     """ParameterSet class.
