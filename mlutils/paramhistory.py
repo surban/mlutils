@@ -20,7 +20,7 @@ class ParameterHistory(object):
                  show_progress=True, state_dir=None,
                  desired_loss=None,
                  max_iters=None, min_iters=None,
-                 max_missed_val_improvements=200, min_improvement=0.00001):
+                 max_missed_val_improvements=200, min_improvement=1e-7):
         """
         Creates a ParameterHistory object that tracks loss, best parameters and termination criteria during training.
         Training is performed until there is no improvement of validation loss for
@@ -144,15 +144,17 @@ class ParameterHistory(object):
         if 'figsize' in dir(plt):
             plt.figsize(10, 5)
         plt.hold(True)
-        if logscale:
-            try:
+        try:
+            if logscale:
                 plt.yscale('log')
                 # plt.xscale('log')
-            except ValueError:
-                pass
-        plt.plot(self.history[0], self.history[1], 'b')
-        plt.plot(self.history[0], self.history[2], 'c')
-        plt.plot(self.history[0], self.history[3], 'r')
+            plt.plot(self.history[0], self.history[1], 'b')
+            plt.plot(self.history[0], self.history[2], 'c')
+            plt.plot(self.history[0], self.history[3], 'r')
+        except ValueError:
+            # catches: ValueError: Data has no positive values, and therefore can not be log-scaled.
+            # when no data is present or we only have NaNs
+            pass
         yl = plt.ylim()
         if self.best_iter is not None:
             plt.vlines(self.best_iter, yl[0], yl[1])

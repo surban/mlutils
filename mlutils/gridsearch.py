@@ -298,6 +298,12 @@ def remove_index_dirs():
 
             for i in range(10):
                 try:
+                    if sys.platform == 'win32':
+                        import win32api, win32con
+                        desktopfile = os.path.join(filename, "desktop.ini")
+                        if os.path.exists(desktopfile):
+                            win32api.SetFileAttributes(desktopfile, win32con.FILE_ATTRIBUTE_NORMAL)
+
                     shutil.rmtree(filename)
                 except:
                     pass
