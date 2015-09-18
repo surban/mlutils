@@ -10,10 +10,8 @@ try:
     gpu_environ = os.environ['BREZE_PARAMETERSET_DEVICE']
     if gpu_environ == 'gpu':
         GPU = True
-        print 'breze uses gpu'
     elif gpu_environ == 'cpu':
         GPU = False
-        print 'breze uses cpu'
     else:
         print "BREZE_PARAMETERSET_DEVICE must be either 'cpu' or 'gpu'"
         sys.exit(1)
@@ -22,7 +20,6 @@ except KeyError:
 
 if GPU:
     import theano.misc.gnumpy_utils as gput
-
     print "Device: GPU"
 else:
     print "Device: CPU"
@@ -61,6 +58,33 @@ def unflatten(tmpl, flat):
 
     nested, _ = unflatten_recursive(tmpl, flat)
     return nested
+
+
+def theano_function_with_nested_exprs(variables, exprs, *args, **kwargs):
+    """Creates and returns a theano.function that takes values for `variables`
+    as arguments, where `variables` may contain nested lists and/or tuples,
+    and returns values for `exprs`, where again `exprs` may contain nested
+    lists and/or tuples.
+
+    All other arguments are passed to theano.function without modification."""
+
+    flat_variables = flatten(variables)
+    flat_exprs = flatten(exprs)
+
+    flat_function = theano.function(
+        flat_variables, flat_exprs, *args, **kwargs)
+
+    def wrapper(*fargs):
+        flat_fargs = flatten(fargs)
+        flat_result = flat_function(*flat_fargs)
+        result = unflatten(exprs, flat_result)
+        return result
+
+    # Expose this to the outside so that fields of theano can be accessed, eg
+    # for debug or graph information.
+    wrapper.flat_function = flat_function
+
+    return wrapper
 
 
 def cpu_tensor_to_gpu(tensor):
@@ -111,6 +135,7 @@ def cpu_expr_to_gpu(expr, unsafe=False):
     If unsafe is set to True, subsequent function calls evaluating the
     expression might return arrays pointing at the same memory region.
     """
+    # expr = T.cast(expr, 'float32')
     return theano.Out(theano.sandbox.cuda.basic_ops.gpu_from_host(expr),
                       borrow=unsafe)
 
