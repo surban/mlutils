@@ -56,6 +56,22 @@ def cuda_device_reset():
     cuda_dll.cudaDeviceReset()
 
 
+def to_1hot(data, max_value):
+    """
+    Converts a one-dimensional data sequence to one-hot encoding.
+    :param data: integer data array to convert
+    :param max_value: maximum value
+    :return: onehot[value, smpl]
+    """
+    n_samples = data.shape[0]
+    onehot = np.zeros((max_value + 1, n_samples))
+    for smpl, val in enumerate(data):
+        val = int(val)
+        assert 0 <= val <= max_value
+        onehot[val, smpl] = 1.0
+    return onehot
+
+
 class PrintEverythingMode(theano.Mode):
     def __init__(self):
         def print_eval(i, node, fn):

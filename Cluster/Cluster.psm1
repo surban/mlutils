@@ -148,7 +148,7 @@ function New-HpcJobFromDirectory
         {
             if (-not $cfg.RunCommand) { throw "RunCommand must be specified either on the command line or in the job description file." }
             $RunCommand = $cfg.RunCommand 
-            if (-not $JobName) { $JobName = "${project}: $cfgname\\$JobFilename" }
+            if (-not $JobName) { $JobName = "${project}: $cfgname\$JobFilename" }
         }
         else
         {
