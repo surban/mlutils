@@ -282,7 +282,7 @@ class GridSearch(object):
 
 
 def gridsearch(name, template, parameter_ranges, only_for={}):
-    GridSearch(name, template, parameter_ranges).generate()
+    GridSearch(name, template, parameter_ranges, only_for).generate()
 
 
 def remove_index_dirs():
