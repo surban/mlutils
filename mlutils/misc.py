@@ -59,7 +59,7 @@ def cuda_device_reset():
 def to_1hot(data, max_value):
     """
     Converts a one-dimensional data sequence to one-hot encoding.
-    :param data: integer data array to convert
+    :param data: data[smpl] - integer data array to convert
     :param max_value: maximum value
     :return: onehot[value, smpl]
     """
@@ -70,6 +70,15 @@ def to_1hot(data, max_value):
         assert 0 <= val <= max_value
         onehot[val, smpl] = 1.0
     return onehot
+
+
+def from_1hot(onehot):
+    """
+    Converts a one-hot encoded data sequence into a one-dimensional data sequence.
+    :param onehot: onehot[value, smpl]
+    :return: data[smpl]
+    """
+    return np.argmax(onehot, axis=0)
 
 
 class PrintEverythingMode(theano.Mode):
@@ -116,3 +125,19 @@ class Output2Floats(object):
         else:
             return [theano.config.floatX, theano.config.floatX]
 
+
+def sample_list_to_array(sample_list):
+    """
+    Joins a list of sample arrays into one joint array.
+    :param sample_list: A list of arrays. Each array corresponds to one sample and the
+                        last dimension is the step index.
+    :return: An array, where the last dimension is the sample index and the second-last dimension is the step index.
+    """
+    other_dims = sample_list[0].shape[0:-1]
+    max_steps = max([smpl.shape[-1] for smpl in sample_list])
+    dims = other_dims + (max_steps, len(sample_list))
+
+    ary = np.zeros(dims, dtype=sample_list[0].dtype)
+    for idx, smpl in enumerate(sample_list):
+        ary[..., 0:smpl.shape[-1], idx] = smpl
+    return ary

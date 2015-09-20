@@ -63,6 +63,7 @@ class ParameterHistory(object):
         self.best_iter = None
         self.best_pars = None
         self.termination_reason = ''
+        self.data = {}
 
         self.reset_best()
 
@@ -191,16 +192,17 @@ class ParameterHistory(object):
         history_filename, results_filename, best_pars_filename = self._get_result_filenames(self.state_dir)
         np.savez_compressed(history_filename, history=self.history)
         np.savez_compressed(best_pars_filename, best_pars=gather(self.best_pars))
+        data = {'best_iter': self.best_iter,
+                'best_val_loss': self.best_val_loss,
+                'best_tst_loss': self.best_tst_loss,
+                'training_time': self.training_time,
+                'start_time': self.start_time,
+                'end_time': self.end_time,
+                'termination_reason': self.termination_reason,
+                'cfg': self.cfg}
+        data.update(self.data)
         with open(results_filename, 'wb') as results_file:
-            json.dump({'best_iter': self.best_iter,
-                       'best_val_loss': self.best_val_loss,
-                       'best_tst_loss': self.best_tst_loss,
-                       'training_time': self.training_time,
-                       'start_time': self.start_time,
-                       'end_time': self.end_time,
-                       'termination_reason': self.termination_reason,
-                       'cfg': self.cfg},
-                      results_file, indent=4)
+            json.dump(data, results_file, indent=4)
 
     @classmethod
     def load(cls, state_dir):
