@@ -58,11 +58,13 @@ class Dataset(object):
         """Validation set partition"""
         self.tst = self.Paratition(ds, idx_tst, self._minibatch_size, self._pad_data)
         """Test set partition"""
+        self.all = self.Paratition(ds, np.arange(self.n_samples), self._minibatch_size, self._pad_data)
+        """All data"""
 
     def print_info(self):
         """Prints info about this dataset"""
-        print "Dataset: %s  (%d training, %d validation, %d test samples)" % \
-              (self._filename, self.trn.n_samples, self.val.n_samples, self.tst.n_samples)
+        print "Dataset: %s  (%d samples: %d training, %d validation, %d test)" % \
+              (self._filename, self.all.n_samples, self.trn.n_samples, self.val.n_samples, self.tst.n_samples)
 
     class Paratition(object):
         """A dataset partition (train / validation / test).
