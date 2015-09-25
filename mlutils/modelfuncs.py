@@ -1,4 +1,6 @@
 import numpy as np
+from os.path import exists, join
+from os import unlink
 from mlutils.config import optimizer_from_cfg
 from mlutils.dataset import Dataset
 from mlutils.gpu import post, gather
@@ -114,13 +116,16 @@ class ModelFuncs(object):
         history.add(iter, self.ps.data, self.trn_loss, self.val_loss, self.tst_loss)
         return history.should_terminate
 
-    def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10):
+    def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10,
+                         max_missed_val_improvements=200, reset_termination_criteria=False):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
         :param checkpoint: checkpoint
         :param checkpoint_handler: checkpoint handler
         :param loss_record_interval: number of iterations between calculating and recording losses
+        :param max_missed_val_improvements: maximum iterations without improvement of loss before training ist stopped
+        :param reset_termination_criteria: resets the termination criteria after loading a checkpoint
         :return: ParameterHistory object of training
         """
         # create optimizer
@@ -129,13 +134,24 @@ class ModelFuncs(object):
         # initialize or restore checkpoint, if available
         if not checkpoint:
             self.init_parameters()
-            his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters)
+            his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters,
+                                   max_missed_val_improvements=max_missed_val_improvements)
             iter = 0
         else:
             self.ps.data[:] = post(checkpoint['data'])
             his = checkpoint['his']
             his.state_dir = cfg_dir
+            his.max_missed_val_improvements = max_missed_val_improvements
             iter = checkpoint['iter']
+
+        # reset termination criteria if requested
+        second_chance_file = join(cfg_dir, "2nd_chance")
+        if exists(second_chance_file):
+            print "Resetting termination criteria because %s is present" % second_chance_file
+            reset_termination_criteria = True
+            unlink(second_chance_file)
+        if reset_termination_criteria:
+            his.should_terminate = False
 
         # do training
         if not his.should_terminate:
