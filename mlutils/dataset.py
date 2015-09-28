@@ -6,7 +6,8 @@ from mlutils.gpu import post
 class Dataset(object):
     """A dataset consisting of training, test and validation set."""
 
-    def __init__(self, filename, fractions=[0.8, 0.1, 0.1], minibatch_size=100, pad_data=False, seed=1):
+    def __init__(self, filename, fractions=[0.8, 0.1, 0.1], minibatch_size=100, pad_data=False, seed=1,
+                 split_function=None):
         """
         Loads a dataset from a .npz file and partitions it into training, test and validation set.
         :param filename: file that contains the dataset
@@ -14,12 +15,19 @@ class Dataset(object):
         :param minibatch_size: minibatch set
         :param pad_data: if True, data is padded so that all variables have the same size
         :param seed: random seed for splitting dataset into training, validation and test set
+        :param split_function: a function that takes the dataset dictionary as input and returns
+                               (training indices, validation indices, test indices)
         """
         self._filename = filename
         self._fractions = fractions
         self._minibatch_size = int(minibatch_size)
         self._pad_data = pad_data
         self._seed = seed
+
+        if split_function is not None:
+            self._split_function = split_function
+        else:
+            self._split_function = self._default_splits
 
         self._load()
         self.print_info()
@@ -37,19 +45,26 @@ class Dataset(object):
             splits.append(idx[cuts[i] : cuts[i+1]])
         return splits
 
+    def _default_splits(self, ds):
+        old_rng = np.random.get_state()
+        np.random.seed(self._seed)
+        idx_trn, idx_val, idx_tst = self._splits(self.n_samples, self._fractions)
+        np.random.set_state(old_rng)
+        return idx_trn, idx_val, idx_tst
+
     def _load(self):
         ds = np.load(self._filename)
 
         self.n_samples = ds[ds.keys()[0]].shape[-1]
         for key in ds.keys():
             if ds[key].shape[-1] != self.n_samples:
-                raise ValueError("dataset contains arrays with differnt number of samples (last dimension)")
+                raise ValueError("dataset contains arrays with different number of samples (last dimension)")
 
         # perform split
-        old_rng = np.random.get_state()
-        np.random.seed(self._seed)
-        idx_trn, idx_val, idx_tst = self._splits(self.n_samples, self._fractions)
-        np.random.set_state(old_rng)
+        idx_trn, idx_val, idx_tst = self._split_function(ds)
+        idx_trn = np.asarray(idx_trn, dtype=int)
+        idx_val = np.asarray(idx_val, dtype=int)
+        idx_tst = np.asarray(idx_tst, dtype=int)
 
         # partitions
         self.trn = self.Paratition(ds, idx_trn, self._minibatch_size, self._pad_data)
@@ -116,4 +131,5 @@ class Dataset(object):
                 e = partition.n_samples
             for key in partition._keys:
                 setattr(self, key, getattr(partition, key)[..., b:e])
+
 
