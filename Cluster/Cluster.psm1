@@ -175,9 +175,16 @@ function New-HpcJobFromDirectory
             $JobEnv = $cfg.JobEnv | ForEach-Object {Perform-Substitutions $_ $basedir $Directory}
             $job = Set-HpcJob -Job $job -JobEnv $JobEnv 
         }
+        if ($cfg.NumCores) { $NumCores = $cfg.NumCores } else { $NumCores = "1-1" }
+        if ($cfg.OneTaskPerNode) { $OneTaskPerNode = $cfg.OneTaskPerNode } else { $OneTaskPerNode = $False }
+        if ($OneTaskPerNode) 
+        {
+            $job = Set-HpcJob -Job $job -NumNodes '*-*'
+        }
 
         # create tasks from subdirectories
         $dirs = Get-ChildItem $Directory -Directory
+        $taskid = 1
         foreach ($dir in $dirs)
         {
             $_, $cfginstname = Get-ProjectAndConfigName($dir.FullName)
@@ -193,17 +200,22 @@ function New-HpcJobFromDirectory
                 continue 
             }
 
+            $job = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir  `
+                -CommandLine "$RunCommand $cfginstname" -Rerunnable $true -NumCores $NumCores 
+            
+            $task = Get-HpcTask -JobId $job.Id -TaskId $taskid
             if (-not $NoRedirect) 
             {
                 $outfile = Join-Path $dir.FullName $OutputFilename 
-                $job = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir -Stdout $outfile -Stderr $outfile `
-                    -CommandLine "$RunCommand $cfginstname" -Rerunnable $true                
+                $task = Set-HpcTask -Task $task -Stdout $outfile -Stderr $outfile 
             }
-            else
+            if ($OneTaskPerNode)
             {
-                $job = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir `
-                    -CommandLine "$RunCommand $cfginstname" -Rerunnable $true
+                $task = Set-HpcTask -Task $task -NumNodes "1-1"
             }
+
+
+            $taskid = $taskid + 1
         }
 
         return $job
