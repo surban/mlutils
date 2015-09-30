@@ -7,19 +7,10 @@ import numpy as np
 import theano
 import theano.tensor as T
 import theano.sandbox.cuda
+from . import gpu
 
-try:
-    gpu_environ = os.environ['BREZE_PARAMETERSET_DEVICE']
-    if gpu_environ == 'gpu':
-        GPU = True
-    elif gpu_environ == 'cpu':
-        GPU = False
-    else:
-        print "BREZE_PARAMETERSET_DEVICE must be either 'cpu' or 'gpu'"
-        sys.exit(1)
-except KeyError:
-    GPU = theano.config.device == 'gpu'
 
+GPU = gpu.GPU
 if GPU:
     import gnumpy
 

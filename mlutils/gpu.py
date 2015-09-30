@@ -17,6 +17,10 @@ try:
         sys.exit(1)
 except KeyError:
     GPU = theano.config.device == 'gpu'
+    if GPU:
+        import theano.sandbox.cuda
+        if not theano.sandbox.cuda.cuda_available:
+            GPU = False
 
 if GPU:
     import theano.misc.gnumpy_utils as gput
