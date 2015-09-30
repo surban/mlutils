@@ -147,4 +147,15 @@ class ParameterSet(object):
     def __setitem__(self, key, value):
         self.views[key][:] = value
 
+    def var_at_index(self, index):
+        """Assuming the views/vars-dictionary order never changes, return the
+        variable name, the value at the given index belongs to, the index within
+        that variable is appended to the variable name"""
+        assert index < self._data.size, 'index out of bounds'
+        iter_index = 0
+        for param in self.views:
+            if index < iter_index + self.views[param].size:
+                return '%s__%i' % (param, index-iter_index)
+            iter_index += self.views[param].size
+
 
