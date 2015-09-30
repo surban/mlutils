@@ -3,13 +3,10 @@
 
 import os
 import sys
-import collections
 import numpy as np
 import theano
 import theano.tensor as T
 import theano.sandbox.cuda
-import theano.misc.gnumpy_utils as gput
-
 
 try:
     gpu_environ = os.environ['BREZE_PARAMETERSET_DEVICE']
