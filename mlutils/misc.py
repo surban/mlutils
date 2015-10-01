@@ -1,5 +1,6 @@
 import sys
 import os
+from climin.initialize import bound_spectral_radius
 import numpy as np
 import gnumpy as gp
 import time
@@ -10,6 +11,9 @@ import ctypes
 if sys.platform == 'nt':
     import msvcrt
 
+############################################################################
+# Misc utilities
+############################################################################
 
 def get_key():
     if sys.platform == 'win32':
@@ -38,8 +42,21 @@ def steps(start, end, step):
         start += step
 
 
-""" Utility functions operating on arrays/lists """
+def random_matrix_with_spectral_radius(size, std=1, bound=1.2):
+    """
+    Generates a randomly initialized, square matrix with bound spectral radius.
+    :param size: size of matrix
+    :type size: int
+    :param bound: spectral radius bound
+    :return: ndarray of shape (size, size)
+    """
+    mat = np.random.normal(0, std, size=(size, size))
+    bound_spectral_radius(mat, bound=bound)
+    return mat
 
+############################################################################
+# Utility functions operating on arrays/lists
+############################################################################
 
 def isfinite(x):
     if not isinstance(x, np.ndarray):
@@ -116,8 +133,9 @@ def sample_list_to_array(sample_list):
         ary[..., 0:smpl.shape[-1], idx] = smpl
     return ary
 
-""" Theano modes """
-
+############################################################################
+# Theano modes
+############################################################################
 
 class PrintEverythingMode(theano.Mode):
     def __init__(self):
