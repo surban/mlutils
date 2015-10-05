@@ -1,6 +1,7 @@
 from glob import glob
 import json
 import time
+from time import time
 from types import ModuleType
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,11 +17,15 @@ class ParameterHistory(object):
     """Keeps track of parameter history, corresponding loses and optimization
     termination criteria."""
 
+    auto_plot_interval = 5 * 60
+    """Automatic plot interval in seconds."""
+
     def __init__(self, cfg=None,
                  show_progress=True, state_dir=None,
                  desired_loss=None,
                  max_iters=None, min_iters=None,
-                 max_missed_val_improvements=200, min_improvement=1e-7):
+                 max_missed_val_improvements=200, min_improvement=1e-7,
+                 double_iterations=True):
         """
         Creates a ParameterHistory object that tracks loss, best parameters and termination criteria during training.
         Training is performed until there is no improvement of validation loss for
@@ -34,9 +39,12 @@ class ParameterHistory(object):
         :param desired_loss: loss that should lead to immediate termination of training when reached
         :param max_iters: maximum number of iterations
         :param min_iters: minimum number of iterations before improvement checking is done
-        :param max_missed_val_improvements: maximum number of iterations without improvement of validation loss
-        before training is terminated
+        :param max_missed_val_improvements: Maximum number of iterations without improvement of validation loss
+        before training is terminated.
         :param min_improvement: minimum change in loss to count as improvement
+        :param double_iterations: If true, then max_missed_val_improvements is automatically set to the number
+        of iterations performed to obtain the best loss so far. Thus after obtaining the best iteration, training
+        continues for as many iterations as were performed so far.
         """
         if cfg is None:
             self.cfg = {}
@@ -52,18 +60,20 @@ class ParameterHistory(object):
         self.max_iters = max_iters
         self.max_missed_val_improvements = max_missed_val_improvements
         self.min_improvement = min_improvement
+        self.double_iterations = double_iterations
 
         self.best_val_loss = float('inf')
         self.best_tst_loss = float('inf')
         self.history = np.zeros((4, 0))
         self.last_val_improvement = 0
         self.should_terminate = False
-        self.start_time = time.time()
-        self.end_time = time.time()
+        self.start_time = time()
+        self.end_time = time()
         self.best_iter = None
         self.best_pars = None
         self.termination_reason = ''
         self.data = {}
+        self._last_auto_plot_time = 0
 
         self.reset_best()
 
@@ -103,10 +113,14 @@ class ParameterHistory(object):
             self.last_val_improvement = iter
 
         # termination criteria
-        if (self.max_missed_val_improvements is not None and
-                iter - self.last_val_improvement > self.max_missed_val_improvements):
-            self.termination_reason = 'no_improvement'
-            self.should_terminate = True
+        if self.max_missed_val_improvements is not None:
+            if self.double_iterations:
+                mmi = max(self.max_missed_val_improvements, self.last_val_improvement)
+            else:
+                mmi = self.max_missed_val_improvements
+            if iter - self.last_val_improvement > mmi:
+                self.termination_reason = 'no_improvement'
+                self.should_terminate = True
         if self.desired_loss is not None and val_loss <= self.desired_loss:
             self.termination_reason = 'desired_loss_reached'
             self.should_terminate = True
@@ -115,6 +129,9 @@ class ParameterHistory(object):
             self.should_terminate = False
         if self.max_iters is not None and iter >= self.max_iters:
             self.termination_reason = 'max_iters_reached'
+            self.should_terminate = True
+        if not (np.isfinite(trn_loss) and np.isfinite(val_loss) and np.isfinite(tst_loss)):
+            self.termination_reason = 'nan_or_inf_loss'
             self.should_terminate = True
 
         # store current losses
@@ -129,6 +146,16 @@ class ParameterHistory(object):
                       "test: %9.5f" % (trn_loss, val_loss, self.best_val_loss,
                                        tst_loss)
             progress.status(iter, caption=caption)
+        if time() > self._last_auto_plot_time + self.auto_plot_interval:
+            try:
+                plt.figure()
+                self.plot()
+                plt.title("training in progress")
+                plt.savefig(join(self.state_dir, "loss.pdf"))
+                plt.close()
+                self._last_auto_plot_time = time()
+            except:
+                pass
 
         # termination by user
         if get_key() == "q":
@@ -248,7 +275,7 @@ class ParameterHistory(object):
         Marks training as finished. Should be called right after exiting the training loop.
         Prints statistics, saves results to disk in the state directory and plots the loss curve.
         """
-        self.end_time = time.time()
+        self.end_time = time()
 
         # print statistics
         if self.best_iter is not None:

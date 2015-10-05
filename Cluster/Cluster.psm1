@@ -177,10 +177,11 @@ function New-HpcJobFromDirectory
         }
         if ($cfg.NumCores) { $NumCores = $cfg.NumCores } else { $NumCores = "1-1" }
         if ($cfg.OneTaskPerNode) { $OneTaskPerNode = $cfg.OneTaskPerNode } else { $OneTaskPerNode = $False }
-        if ($OneTaskPerNode) 
-        {
-            $job = Set-HpcJob -Job $job -NumNodes '*-*'
-        }
+        if ($cfg.OneTaskPerSocket) { $OneTaskPerSocket = $cfg.OneTaskPerSocket } else { $OneTaskPerSocket = $False }
+        
+        if ($OneTaskPerNode -and $OneTaskPerSocket) { throw "OneTaskPerNode and OneTaskPerSocket are mutally exclusive." }
+        if ($OneTaskPerNode) { $job = Set-HpcJob -Job $job -NumNodes '*-*'  }
+        if ($OneTaskPerSocket) { $job = Set-HpcJob -Job $job -NumSockets '*-*'  }
 
         # create tasks from subdirectories
         $dirs = Get-ChildItem $Directory -Directory
@@ -203,17 +204,15 @@ function New-HpcJobFromDirectory
             $job = Add-HpcTask -Job $job -Name $dir.Name -WorkDir $basedir  `
                 -CommandLine "$RunCommand $cfginstname" -Rerunnable $true -NumCores $NumCores 
             
+            # set optional task options
             $task = Get-HpcTask -JobId $job.Id -TaskId $taskid
             if (-not $NoRedirect) 
             {
                 $outfile = Join-Path $dir.FullName $OutputFilename 
                 $task = Set-HpcTask -Task $task -Stdout $outfile -Stderr $outfile 
             }
-            if ($OneTaskPerNode)
-            {
-                $task = Set-HpcTask -Task $task -NumNodes "1-1"
-            }
-
+            if ($OneTaskPerNode) { $task = Set-HpcTask -Task $task -NumNodes "1-1" }
+            if ($OneTaskPerSocket) { $task = Set-HpcTask -Task $task -NumSockets "1-1" }
 
             $taskid = $taskid + 1
         }

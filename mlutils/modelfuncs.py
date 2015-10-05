@@ -4,7 +4,7 @@ from os import unlink
 from mlutils.config import optimizer_from_cfg
 from mlutils.dataset import Dataset
 from mlutils.gpu import post, gather
-from mlutils.paramhistory import ParameterHistory
+from mlutils.parameterhistory import ParameterHistory
 
 
 class ModelFuncs(object):
@@ -53,9 +53,18 @@ class ModelFuncs(object):
         """The parameterset of the model."""
         return self.model.ps
 
-    def init_parameters(self):
-        """Initializes the parameteres of the ParameterSet of the model close to zero."""
-        self.ps.data[:] = post(np.random.normal(0, 0.01, size=self.model.ps.data.shape))
+    def init_parameters(self, var=None):
+        """Initializes the parameteres of the ParameterSet using a zero-mean normal distribution.
+        :param var: Variance of the normal distribution.
+                    If None, then the 'initialization_variance' parameter from the configuration is used.
+        """
+        if var is None:
+            if 'initialization_variance' in dir(self.cfg):
+                var = self.cfg.initialization_variance
+            else:
+                var = 0.01
+        print "Initializing parameters with variance %f" % var
+        self.ps.data[:] = post(np.random.normal(0, var, size=self.model.ps.data.shape))
 
     def load_parameters(self, filename):
         """Loads the parameters of the ParameterSet of the model from the given file."""

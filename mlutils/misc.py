@@ -133,6 +133,52 @@ def sample_list_to_array(sample_list):
         ary[..., 0:smpl.shape[-1], idx] = smpl
     return ary
 
+
+def combine_sample_steps(n_steps, data):
+    """
+    Combines all steps from all samples of the given data.
+    :param n_steps: n_steps[smpl] - number of the steps in the given sample.
+    :param data: data[..., step, smpl] - data to combine
+    :return: combined[..., smpl] - all valid steps from all samples concatenated
+    """
+    n_samples = n_steps.shape[0]
+    assert data.shape[-1] == n_samples
+
+    n_total_steps = np.sum(n_steps)
+    shp = data.shape[0:-2]
+    combined = np.zeros(shp + (n_total_steps,), dtype=data.dtype)
+
+    pos = 0
+    for smpl in range(n_samples):
+        ns = n_steps[smpl]
+        combined[..., pos : pos + ns] = data[..., 0:ns, smpl]
+        pos += ns
+
+    return combined
+
+
+def divide_sample_steps(n_steps, combined):
+    """
+    Reverses the combination of steps of all samples done by the combine_sample_steps function.
+    :param n_steps: n_steps: n_steps[smpl] - number of the steps in the given sample.
+    :param combined: combined[..., smpl] - all valid steps from all samples concatenated
+    :return: data: data[..., step, smpl] - data with separate dimensions for step and sample
+    """
+    n_samples = n_steps.shape[0]
+    n_max_steps = np.max(n_steps)
+    shp = combined.shape[0:-1]
+    data = np.zeros(shp + (n_max_steps, n_samples), dtype=combined.dtype)
+
+    pos = 0
+    for smpl in range(n_samples):
+        ns = n_steps[smpl]
+        data[..., 0:ns, smpl] = combined[..., pos : pos + ns]
+        pos += ns
+    assert pos == combined.shape[-1]
+
+    return data
+
+
 ############################################################################
 # Theano modes
 ############################################################################
