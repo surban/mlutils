@@ -139,8 +139,22 @@ class ModelFuncs(object):
         :param desired_loss: if specified, training is terminated with this loss is reached
         :return: ParameterHistory object of training
         """
+
+        # gradient magnitude cap
+        if 'gradient_cap' in dir(self.cfg) and self.cfg.gradient_cap is not None:
+            def grad_with_cap(pv):
+                g = self.mb_loss_grad(pv)
+                g_mag = (g**2).sum().sqrt()
+                if g_mag > self.cfg.gradient_cap:
+                    print "gradient magnitude %f is being rescaled" % g_mag
+                    g *= self.cfg.gradient_cap / g_mag
+                return g
+            grad_func = grad_with_cap
+        else:
+            grad_func = self.mb_loss_grad
+
         # create optimizer
-        opt = optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, self.mb_loss_grad)
+        opt = optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, grad_func)
 
         # initialize or restore checkpoint, if available
         if not checkpoint:
