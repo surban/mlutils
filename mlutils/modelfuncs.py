@@ -127,7 +127,7 @@ class ModelFuncs(object):
 
     def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10,
                          max_missed_val_improvements=200, reset_termination_criteria=False,
-                         desired_loss=None):
+                         desired_loss=None, initialize=True):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -137,6 +137,7 @@ class ModelFuncs(object):
         :param max_missed_val_improvements: maximum iterations without improvement of loss before training ist stopped
         :param reset_termination_criteria: resets the termination criteria after loading a checkpoint
         :param desired_loss: if specified, training is terminated with this loss is reached
+        :param initialize: if True, the model parameters are initialized using the init_parameters method.
         :return: ParameterHistory object of training
         """
 
@@ -158,7 +159,8 @@ class ModelFuncs(object):
 
         # initialize or restore checkpoint, if available
         if not checkpoint:
-            self.init_parameters()
+            if initialize:
+                self.init_parameters()
             his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters,
                                    max_missed_val_improvements=max_missed_val_improvements,
                                    desired_loss=desired_loss)
