@@ -1,3 +1,4 @@
+from os import makedirs
 from socket import gethostname
 import ctypes
 from inspect import getargspec
@@ -9,8 +10,9 @@ import pickle
 import signal
 import itertools
 import __main__ as main
-from os.path import isfile
+from os.path import isfile, exists
 import climin
+from argparse import ArgumentParser
 
 
 def multiglob(*patterns):
@@ -40,7 +42,7 @@ def cfgs_dir():
     return os.path.join(base_dir(), "cfgs")
 
 
-def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=False, defaults={}):
+def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=False, defaults={}, force_restart=False):
     """Reads the configuration file cfg.py from the configuration directory
     specified as the first parameter on the command line.
     Returns a tuple consisting of the configuration module and the plot directory.
@@ -48,18 +50,24 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     :param prepend: Prepend subdirectory for config file. Use %SCRIPTNAME% to insert name of running script.
     :param with_checkpoint: enables checkpoint support
     :param defaults: default values for non-specified configuration variables
+    :param forece_restart: if True, checkpoint loading is inhibited.
     :returns: if with_checkpoint == True:  (cfg module, cfg directory, checkpoint handler, checkpoint)
               if with_checkpoint == False: (cfg module, cfg directory)
     """
+    outdir = None
     if config_name is None:
-        if len(sys.argv) < 2:
-            if with_checkpoint:
-                print "Usage: %s <config> [restart]" % sys.argv[0]
-            else:
-                print "Usage: %s <config>" % sys.argv[0]
-            sys.exit(1)
-        else:
-            config_name = sys.argv[1]
+        parser = ArgumentParser()
+        parser.add_argument('cfg', help="configuration to load (specified relative to the cfgs directory)")
+        parser.add_argument('--out-dir', help="output directory (by default config directory is used)")
+        if with_checkpoint:
+            parser.add_argument('--restart', action='store_true', help="inhibits loading of an available checkpoint")
+
+        args = parser.parse_args()
+        config_name = args.cfg
+        if args.out_dir is not None:
+            outdir = args.out_dir
+        if with_checkpoint:
+            force_restart = args.restart
 
     print "Host: %s" % gethostname()
 
@@ -78,11 +86,17 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     sys.dont_write_bytecode = True
     cfg = imp.load_source('cfg', cfgname)
 
+    if outdir is None:
+        outdir = cfgdir
+    print "Output directory: %s" % outdir
+    if not exists(outdir):
+        makedirs(outdir)
+
     # load checkpoint if requested
     checkpoint = None
     if with_checkpoint:
-        cp_handler = CheckpointHandler(cfgdir)
-        if (cp_handler.exists and not (len(sys.argv) >= 3 and sys.argv[2] == "restart")):
+        cp_handler = CheckpointHandler(outdir)
+        if (cp_handler.exists and not force_restart):
             checkpoint = cp_handler.load()
         else:
             print "Checkpoint: none"
@@ -96,15 +110,15 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     # clean configuration directory
     if clean_outputs and checkpoint is None:
         curdir = os.path.abspath(os.curdir)
-        os.chdir(cfgdir)
+        os.chdir(outdir)
         for file in multiglob('*.png', '*.pdf', '*.npz'):
             os.remove(file)
-        os.chdir(curdir)
+        os.chdir(outdir)
 
     if with_checkpoint:
-        return cfg, cfgdir, cp_handler, checkpoint
+        return cfg, outdir, cp_handler, checkpoint
     else:
-        return cfg, cfgdir
+        return cfg, outdir
 
 
 def optimizer_from_cfg(cfg, wrt, f, fprime):
