@@ -68,7 +68,7 @@ def isfinite(x):
 def get_2d_meshgrid(x_min, x_max, x_num, y_min, y_max, y_num, as_matrix=False):
     """
     Returns either two vectors with all combinations of x_num and y_num values
-    in [x_min, x_max] and [y_min, y_max] or a matrix with two columns, where
+    in [x_min, x_max] and [y_min, y_max] or a matrix with two rows, where
     the first corresponds to the x vector and the second to the y vector
     """
     assert x_min <= x_max, 'x_max must be larger or equal x_min'
@@ -84,9 +84,9 @@ def get_2d_meshgrid(x_min, x_max, x_num, y_min, y_max, y_num, as_matrix=False):
     if as_matrix:
         x = x.reshape((x.size,))
         y = y.reshape((y.size,))
-        matrix = np.ones((len(x), 2))
-        matrix[:, 0] = x
-        matrix[:, 1] = y
+        matrix = np.ones((2, len(x)))
+        matrix[0, :] = x
+        matrix[1, :] = y
         return matrix
     else:
         return x, y

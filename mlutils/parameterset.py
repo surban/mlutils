@@ -146,4 +146,15 @@ class ParameterSet(object):
                 return '%s__%i' % (param, index-iter_index)
             iter_index += self.views[param].size
 
+    def indices_at_var(self, key):
+        """
+        """
+        if not key in self.views:
+            print 'Parameterset does not contain %s' % key
+            return
+        iter_index = 0
+        for param in self.views:
+            if param == key:
+                return (iter_index, iter_index + self.views[param].size)
+            iter_index += self.views[param].size
 
