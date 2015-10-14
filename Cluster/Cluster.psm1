@@ -34,6 +34,8 @@ function Perform-Substitutions($value, $basedir, $cfgdir)
 {
     $value = $value.Replace('$BASEDIR$', $basedir)
     $value = $value.Replace('$CFGDIR$', $cfgdir)
+    $scriptdir = ToUNCPath (Join-Path (Join-Path $PSScriptRoot ..) Scripts)
+    $value = $value.Replace('$ONBESTDEVICE$', (Join-Path $scriptdir "OnBestDevice.cmd"))
     return $value
 }
 
@@ -344,4 +346,7 @@ Export-ModuleMember -Function New-HpcJobFromDirectory
 Export-ModuleMember -Function Get-HpcTaskResults
 Export-ModuleMember -Function Clear-Checkpoints
 
+
+Export-ModuleMember -Function Get-GPU
+Export-ModuleMember -Function Start-OnBestDevice
 
