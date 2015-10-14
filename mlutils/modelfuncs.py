@@ -172,6 +172,7 @@ class ModelFuncs(object):
             his.max_missed_val_improvements = max_missed_val_improvements
             his.desired_loss = desired_loss
             iter = checkpoint['iter']
+            his.start()
 
         # reset termination criteria if requested
         second_chance_file = join(cfg_dir, "2nd_chance")
@@ -197,10 +198,12 @@ class ModelFuncs(object):
 
                 # save checkpoint if necessary
                 if checkpoint_handler and checkpoint_handler.requested:
+                    his.stop()
                     checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter)
 
         # save results and plot loss
         if checkpoint_handler:
+            his.stop()
             checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
         his.finish()
 

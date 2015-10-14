@@ -67,8 +67,8 @@ class ParameterHistory(object):
         self.history = np.zeros((4, 0))
         self.last_val_improvement = 0
         self.should_terminate = False
-        self.start_time = time()
-        self.end_time = time()
+        self.start_time = [time()]
+        self.end_time = []
         self.best_iter = None
         self.best_pars = None
         self.termination_reason = ''
@@ -203,7 +203,7 @@ class ParameterHistory(object):
     @property
     def training_time(self):
         """The time training took in seconds."""
-        return self.end_time - self.start_time
+        return np.sum(np.array(self.end_time) - np.array(self.start_time))
 
     @staticmethod
     def _get_result_filenames(cfg_dir):
@@ -270,18 +270,23 @@ class ParameterHistory(object):
             his[cfg_name] = cls.load(results_dir)
         return his
 
+    def start(self):
+        self.start_time.append(time())
+
+    def stop(self):
+        self.end_time.append(time())
+
     def finish(self):
         """
         Marks training as finished. Should be called right after exiting the training loop.
         Prints statistics, saves results to disk in the state directory and plots the loss curve.
         """
-        self.end_time = time()
 
         # print statistics
         if self.best_iter is not None:
             print "Best iteration %5d with validation loss %9.5f and test loss %9.5f" % \
                   (self.best_iter, self.best_val_loss, self.best_tst_loss)
-            print "Training took %.2f s and was terminated because %s." % (self.end_time - self.start_time,
+            print "Training took %.2f s and was terminated because %s." % (self.training_time,
                                                                            self.termination_reason)
 
         # save results
