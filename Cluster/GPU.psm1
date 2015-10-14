@@ -106,14 +106,15 @@ function TryLock-GPU
 
     if ($ConcurrentName -eq $null) 
     { 
-        if (Test-Path Env:\CCP_JOBID) 
-        { 
-            $ConcurrentName = $env:CCP_JOBID 
-        }
-        else
-        {
-            $ConcurrentName = "none"
-        }
+        $ConcurrentName = "none"
+        #if (Test-Path Env:\CCP_JOBID) 
+        #{ 
+        #    $ConcurrentName = $env:CCP_JOBID 
+        #}
+        #else
+        #{
+        #    $ConcurrentName = "none"
+        #}
     }
 
     $locks = Get-GPULocks
