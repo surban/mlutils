@@ -165,6 +165,8 @@ class ModelFuncs(object):
                                    max_missed_val_improvements=max_missed_val_improvements,
                                    desired_loss=desired_loss)
             iter = 0
+            # Record initial loss
+            self.record_loss(his, iter)
         else:
             self.ps.data[:] = post(checkpoint['data'])
             his = checkpoint['his']
@@ -172,6 +174,11 @@ class ModelFuncs(object):
             his.max_missed_val_improvements = max_missed_val_improvements
             his.desired_loss = desired_loss
             iter = checkpoint['iter']
+            # start and endtimes in his should have the same length, this is
+            # not the case in explicit auto-save checkpoints, therefore set the
+            # end to the saved
+            if (len(his.start_time) != len(his.end_time)):
+                his.end_time.append(checkpoint['save_time'])
             his.start()
 
         # reset termination criteria if requested
@@ -200,6 +207,10 @@ class ModelFuncs(object):
                 if checkpoint_handler and checkpoint_handler.requested:
                     his.stop()
                     checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter)
+
+                if checkpoint_handler and his.should_save_checkpoint:
+                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
+
 
         # save results and plot loss
         if checkpoint_handler:

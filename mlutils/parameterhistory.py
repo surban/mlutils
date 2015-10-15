@@ -20,6 +20,9 @@ class ParameterHistory(object):
     auto_plot_interval = 5 * 60
     """Automatic plot interval in seconds."""
 
+    auto_save_interval = 10 * 60
+    """Automatic save interval in seconds."""
+
     def __init__(self, cfg=None,
                  show_progress=True, state_dir=None,
                  desired_loss=None,
@@ -74,6 +77,7 @@ class ParameterHistory(object):
         self.termination_reason = ''
         self.data = {}
         self._last_auto_plot_time = 0
+        self._last_auto_save_time = 0
 
         self.reset_best()
 
@@ -198,12 +202,24 @@ class ParameterHistory(object):
     @property
     def converged(self):
         """True if the desired loss has been achieved."""
+        assert self.desired_loss is not None, "It cannot be decided if training convereged if desired loss is not specified"
         return self.best_val_loss <= self.desired_loss + self.min_improvement
 
     @property
     def training_time(self):
         """The time training took in seconds."""
         return np.sum(np.array(self.end_time) - np.array(self.start_time))
+
+    @property
+    def should_save_checkpoint(self):
+        """
+        True if enough time has passed since the checkpoint has last been saved.
+        """
+        if time() > self._last_auto_save_time + self.auto_save_interval:
+            self._last_auto_save_time = time()
+            return True
+        else:
+            return False
 
     @staticmethod
     def _get_result_filenames(cfg_dir):
