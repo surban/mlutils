@@ -126,7 +126,7 @@ class ModelFuncs(object):
         return history.should_terminate
 
     def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10,
-                         max_missed_val_improvements=200, reset_termination_criteria=False,
+                         max_missed_val_improvements=200, iteration_gain=1.25, reset_termination_criteria=False,
                          desired_loss=None, initialize=True):
         """
         Generic training procedure.
@@ -135,6 +135,8 @@ class ModelFuncs(object):
         :param checkpoint_handler: checkpoint handler
         :param loss_record_interval: number of iterations between calculating and recording losses
         :param max_missed_val_improvements: maximum iterations without improvement of loss before training ist stopped
+        :param iteration_gain: If not set to 0, then training is performed up to iteration
+                               (iteration_gain * iteration_of_last_improvement).
         :param reset_termination_criteria: resets the termination criteria after loading a checkpoint
         :param desired_loss: if specified, training is terminated with this loss is reached
         :param initialize: if True, the model parameters are initialized using the init_parameters method.
@@ -163,7 +165,7 @@ class ModelFuncs(object):
                 self.init_parameters()
             his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters,
                                    max_missed_val_improvements=max_missed_val_improvements,
-                                   desired_loss=desired_loss)
+                                   desired_loss=desired_loss, iteration_gain=iteration_gain)
             iter = 0
         else:
             self.ps.data[:] = post(checkpoint['data'])
@@ -171,6 +173,7 @@ class ModelFuncs(object):
             his.state_dir = cfg_dir
             his.max_missed_val_improvements = max_missed_val_improvements
             his.desired_loss = desired_loss
+            setattr(his, 'iteration_gain', iteration_gain)
             iter = checkpoint['iter']
 
         # reset termination criteria if requested
