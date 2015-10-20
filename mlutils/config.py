@@ -5,6 +5,7 @@ from inspect import getargspec
 import os
 import sys
 import glob
+import time
 import imp
 import pickle
 import signal
@@ -195,6 +196,8 @@ class CheckpointHandler(object):
         explicit = False
         if 'explicit' in kwargs:
             explicit = kwargs['explicit']
+            # save time the checkpoint was created
+            kwargs['save_time'] = time.time()
 
         if self._requested:
             print "Checkpoint: saving %s" % self._path
