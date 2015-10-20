@@ -213,7 +213,7 @@ class ModelFuncs(object):
 
                 if checkpoint_handler and his.should_save_checkpoint:
                     checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
-
+                    his.checkpoint_saved()
 
         # save results and plot loss
         if checkpoint_handler:

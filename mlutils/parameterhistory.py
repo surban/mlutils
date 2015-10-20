@@ -215,14 +215,12 @@ class ParameterHistory(object):
 
     @property
     def should_save_checkpoint(self):
-        """
-        True if enough time has passed since the checkpoint has last been saved.
-        """
-        if time() > self._last_auto_save_time + self.auto_save_interval:
-            self._last_auto_save_time = time()
-            return True
-        else:
-            return False
+        """True if enough time has passed since the checkpoint has last been saved."""
+        return time() > self._last_auto_save_time + self.auto_save_interval
+
+    def checkpoint_saved(self):
+        """Notifies the ParameterHistory that a checkpoint has been saved."""
+        self._last_auto_save_time = time()
 
     @staticmethod
     def _get_result_filenames(cfg_dir):
