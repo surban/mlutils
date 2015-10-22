@@ -215,6 +215,8 @@ class ModelFuncs(object):
                     checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
                     his.checkpoint_saved()
 
+        self.after_training(his)
+
         # save results and plot loss
         if checkpoint_handler:
             his.stop()
@@ -222,3 +224,11 @@ class ModelFuncs(object):
         his.finish()
 
         return his
+
+    def after_training(self, his):
+        """
+        Called by generic_training after training is finished.
+        For example this function can be used to add custom error measures to the training history.
+        :param his: used training historz
+        """
+        pass
