@@ -195,7 +195,6 @@ class ModelFuncs(object):
 
         # do training
         if not his.should_terminate:
-            print "Training..."
             for sts in opt:
                 if self.next_minibatch():
                     # iteration finished

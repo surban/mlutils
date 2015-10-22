@@ -91,8 +91,9 @@ class Dataset(object):
         n_bytes = self.trn.n_bytes + self.val.n_bytes + self.tst.n_bytes
         if self.all:
             n_bytes *= 2
-        print "Dataset: %s  (%d samples: %d training, %d validation, %d test, %.2f MB)" % \
-              (self._filename, self.n_samples, self.trn.n_samples, self.val.n_samples, self.tst.n_samples,
+        print "Dataset: %s" % self._filename
+        print "         (%d samples: %d training, %d validation, %d test, %.2f MB)" % \
+              (self.n_samples, self.trn.n_samples, self.val.n_samples, self.tst.n_samples,
                n_bytes / float(2 ** 20))
 
     class Paratition(object):
