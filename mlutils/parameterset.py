@@ -158,3 +158,13 @@ class ParameterSet(object):
                 return (iter_index, iter_index + self.views[param].size)
             iter_index += self.views[param].size
 
+    def find_highloss_pars(self, loss, threshold):
+        assert loss.size == self.data.size, 'loss should be calculated' \
+                                            'with respect to variables in ps'
+        params = {}
+        for i in range(loss.size):
+            if abs(loss[i]) >= threshold:
+                params.update({i: (self.var_at_index(i), loss[i])})
+        return params
+
+
