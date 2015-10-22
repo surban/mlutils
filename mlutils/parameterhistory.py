@@ -28,7 +28,7 @@ class ParameterHistory(object):
                  desired_loss=None,
                  max_iters=None, min_iters=None,
                  max_missed_val_improvements=200, min_improvement=1e-7,
-                 double_iterations=True):
+                 iteration_gain=1.25):
         """
         Creates a ParameterHistory object that tracks loss, best parameters and termination criteria during training.
         Training is performed until there is no improvement of validation loss for
@@ -43,11 +43,10 @@ class ParameterHistory(object):
         :param max_iters: maximum number of iterations
         :param min_iters: minimum number of iterations before improvement checking is done
         :param max_missed_val_improvements: Maximum number of iterations without improvement of validation loss
-        before training is terminated.
+                                            before training is terminated.
         :param min_improvement: minimum change in loss to count as improvement
-        :param double_iterations: If true, then max_missed_val_improvements is automatically set to the number
-        of iterations performed to obtain the best loss so far. Thus after obtaining the best iteration, training
-        continues for as many iterations as were performed so far.
+        :param iteration_gain: If not set to 0, then training is performed up to iteration
+                               (iteration_gain * iteration_of_last_improvement).
         """
         if cfg is None:
             self.cfg = {}
@@ -63,7 +62,7 @@ class ParameterHistory(object):
         self.max_iters = max_iters
         self.max_missed_val_improvements = max_missed_val_improvements
         self.min_improvement = min_improvement
-        self.double_iterations = double_iterations
+        self.iteration_gain = iteration_gain
 
         self.best_val_loss = float('inf')
         self.best_tst_loss = float('inf')
@@ -117,9 +116,10 @@ class ParameterHistory(object):
             self.last_val_improvement = iter
 
         # termination criteria
+        mmi = None
         if self.max_missed_val_improvements is not None:
-            if self.double_iterations:
-                mmi = max(self.max_missed_val_improvements, self.last_val_improvement)
+            if self.iteration_gain != 0:
+                mmi = max(self.max_missed_val_improvements, (self.iteration_gain - 1) * self.last_val_improvement)
             else:
                 mmi = self.max_missed_val_improvements
             if iter - self.last_val_improvement > mmi:
@@ -147,8 +147,11 @@ class ParameterHistory(object):
         # display progress
         if self.show_progress:
             caption = "training: %9.5f  validation: %9.5f (best: %9.5f)  " \
-                      "test: %9.5f" % (trn_loss, val_loss, self.best_val_loss,
-                                       tst_loss)
+                      "test: %9.5f   " % \
+                      (trn_loss, val_loss, self.best_val_loss, tst_loss)
+            if mmi is not None:
+                caption += "    (patience for %d non-improving iterations) " % \
+                           (mmi - (iter - self.last_val_improvement))
             progress.status(iter, caption=caption)
         if time() > self._last_auto_plot_time + self.auto_plot_interval:
             try:
@@ -212,14 +215,12 @@ class ParameterHistory(object):
 
     @property
     def should_save_checkpoint(self):
-        """
-        True if enough time has passed since the checkpoint has last been saved.
-        """
-        if time() > self._last_auto_save_time + self.auto_save_interval:
-            self._last_auto_save_time = time()
-            return True
-        else:
-            return False
+        """True if enough time has passed since the checkpoint has last been saved."""
+        return time() > self._last_auto_save_time + self.auto_save_interval
+
+    def checkpoint_saved(self):
+        """Notifies the ParameterHistory that a checkpoint has been saved."""
+        self._last_auto_save_time = time()
 
     @staticmethod
     def _get_result_filenames(cfg_dir):

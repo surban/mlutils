@@ -122,7 +122,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         return cfg, outdir
 
 
-def optimizer_from_cfg(cfg, wrt, f, fprime):
+def optimizer_from_cfg(cfg, wrt, f, fprime, print_config=True):
     # get specified optimizer and its constructor
     class_name = 'climin.' + cfg.optimizer
     class_obj = eval(class_name)
@@ -144,6 +144,11 @@ def optimizer_from_cfg(cfg, wrt, f, fprime):
             cfg_arg = 'optimizer_' + arg
             if cfg_arg in dir(cfg):
                 kwargs[arg] = getattr(cfg, cfg_arg)
+
+    if print_config:
+        argstr = ", ".join(["%s=%s" % (arg, str(value)) for arg, value in kwargs.iteritems()
+                            if arg not in ['wrt', 'f', 'fprime']])
+        print "optimizer: %s (%s)" % (cfg.optimizer, argstr)
 
     return class_obj(**kwargs)
 

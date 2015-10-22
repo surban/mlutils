@@ -12,15 +12,22 @@ function Get-GPU
 {
     if (-not (Test-Path $NvidiaSMI))  { return $null }
 
-    $out = [xml]$(& $NvidiaSMI -q -x)
-    $gpu = $out.nvidia_smi_log.gpu
-    $object = New-Object –TypeName PSObject
-    $object | Add-Member –MemberType NoteProperty –Name Name –Value $gpu.product_name 
-    $str = $gpu.fb_memory_usage.total 
-    $object | Add-Member –MemberType NoteProperty –Name TotalMemory –Value ($str.Substring(0,$str.Length-4) -as [int])
-    $str = $gpu.fb_memory_usage.free
-    $object | Add-Member –MemberType NoteProperty –Name FreeMemory –Value ($str.Substring(0,$str.Length-4) -as [int])   
-    $object
+    try
+    {
+        $out = [xml]$(& $NvidiaSMI -q -x)
+        $gpu = $out.nvidia_smi_log.gpu
+        $object = New-Object –TypeName PSObject
+        $object | Add-Member –MemberType NoteProperty –Name Name –Value $gpu.product_name 
+        $str = $gpu.fb_memory_usage.total 
+        $object | Add-Member –MemberType NoteProperty –Name TotalMemory –Value ($str.Substring(0,$str.Length-4) -as [int])
+        $str = $gpu.fb_memory_usage.free
+        $object | Add-Member –MemberType NoteProperty –Name FreeMemory –Value ($str.Substring(0,$str.Length-4) -as [int])   
+        return $object
+    }
+    catch
+    {
+        return $null
+    }
 }
 
 

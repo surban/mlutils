@@ -350,3 +350,10 @@ Export-ModuleMember -Function Clear-Checkpoints
 Export-ModuleMember -Function Get-GPU
 Export-ModuleMember -Function Start-OnBestDevice
 
+
+Set-Alias hpcdir New-HpcJobFromDirectory
+Export-ModuleMember -Alias hpcdir
+
+Set-Alias hpcres Get-HpcTaskResults
+Export-ModuleMember -Alias hpcres
+
