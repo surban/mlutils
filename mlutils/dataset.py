@@ -6,13 +6,15 @@ from mlutils.gpu import post
 class Dataset(object):
     """A dataset consisting of training, test and validation set."""
 
-    def __init__(self, filename, fractions=[0.8, 0.1, 0.1], minibatch_size=100, pad_data=False, seed=1,
+    def __init__(self, filename_or_ds, fractions=[0.8, 0.1, 0.1], minibatch_size=100, pad_data=False, seed=1,
                  split_function=None, preprocessing_function=None, with_all=False):
         """
         Loads a dataset from a .npz file and partitions it into training, test and validation set.
-        :param filename: file that contains the dataset
+        :param filename_or_ds: file that contains the dataset or
+                               a dict that contains (string, ndarray)-pairs
         :param fractions: split fractions for training, validation, test
-        :param minibatch_size: minibatch set
+        :param minibatch_size: size of a minibatch
+                               (if None then one minibatch consisting of the whole dataset is created)
         :param pad_data: if True, data is padded so that all variables have the same size
         :param seed: random seed for splitting dataset into training, validation and test set
         :param split_function: a function that takes the dataset dictionary as input and returns
@@ -21,9 +23,17 @@ class Dataset(object):
                                        a preprocessed version of it
         :param with_all: if True, then self.all contains all samples of the dataset (uses additional memory)
         """
-        self._filename = filename
+        if isinstance(filename_or_ds, dict):
+            self._ds_source = 'data'
+            self._ds_data = filename_or_ds
+        else:
+            self._ds_source = 'file'
+            self._ds_filename = filename_or_ds
         self._fractions = fractions
-        self._minibatch_size = int(minibatch_size)
+        if minibatch_size is not None:
+            self._minibatch_size = int(minibatch_size)
+        else:
+            self._minibatch_size = 9999999999
         self._pad_data = pad_data
         self._seed = seed
         self._with_all = with_all
@@ -58,7 +68,14 @@ class Dataset(object):
         return idx_trn, idx_val, idx_tst
 
     def _load(self):
-        ds = np.load(self._filename)
+        if self._ds_source == 'file':
+            ds = np.load(self._ds_filename)
+        elif self._ds_source == 'data':
+            ds = dict(self._ds_data)
+            for key, value in ds.iteritems():
+                if not (isinstance(key, basestring) and isinstance(value, np.ndarray)):
+                    raise TypeError("passed dataset must consist of (string, ndarray)-pairs")
+
         if self._preprocessing_function:
             ds = self._preprocessing_function(dict(ds))
 
@@ -91,7 +108,11 @@ class Dataset(object):
         n_bytes = self.trn.n_bytes + self.val.n_bytes + self.tst.n_bytes
         if self.all:
             n_bytes *= 2
-        print "Dataset: %s" % self._filename
+        if self._ds_source == 'file':
+            src = self._ds_filename
+        elif self._ds_source == 'data':
+            src = "<in-memory>"
+        print "Dataset: %s" % src
         print "         (%d samples: %d training, %d validation, %d test, %.2f MB)" % \
               (self.n_samples, self.trn.n_samples, self.val.n_samples, self.tst.n_samples,
                n_bytes / float(2 ** 20))
