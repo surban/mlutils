@@ -1,6 +1,7 @@
 import numpy as np
 from os.path import exists, join
 from os import unlink
+from mlutils import xp
 from mlutils.config import optimizer_from_cfg
 from mlutils.dataset import Dataset
 from mlutils.gpu import post, gather
@@ -127,7 +128,8 @@ class ModelFuncs(object):
 
     def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10,
                          max_missed_val_improvements=200, iteration_gain=1.25, reset_termination_criteria=False,
-                         desired_loss=None, initialize=True):
+                         desired_loss=None, initialize=True,
+                         large_gradient_threshold=0.0, print_gradient_info=False):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -140,6 +142,9 @@ class ModelFuncs(object):
         :param reset_termination_criteria: resets the termination criteria after loading a checkpoint
         :param desired_loss: if specified, training is terminated with this loss is reached
         :param initialize: if True, the model parameters are initialized using the init_parameters method.
+        :param large_gradient_threshold: if specified, a check for large gradient elements that exceed the
+                                         given threshold is performed every iteration and they are printed.
+        :param print_gradient_info: if True, this function prints diagnostic gradient information
         :return: ParameterHistory object of training
         """
 
@@ -147,12 +152,19 @@ class ModelFuncs(object):
         if 'gradient_cap' in dir(self.cfg) and self.cfg.gradient_cap is not None:
             def grad_with_cap(pv):
                 g = self.mb_loss_grad(pv)
-                g_mag = (g**2).sum().sqrt()
+                g_mag = xp.sqrt(xp.sum(g**2))
                 if g_mag > self.cfg.gradient_cap:
                     print "gradient magnitude %f is being rescaled" % g_mag
                     g *= self.cfg.gradient_cap / g_mag
                 return g
             grad_func = grad_with_cap
+        elif 'gradient_element_cap' in dir(self.cfg) and self.cfg.gradient_element_cap is not None:
+            def grad_with_element_cap(pv):
+                g = self.mb_loss_grad(pv)
+                elems = xp.where(xp.abs(g) > self.cfg.gradient_element_cap)
+                g[elems] = xp.sign(g[elems]) * self.cfg.gradient_element_cap
+                return g
+            grad_func = grad_with_element_cap
         else:
             grad_func = self.mb_loss_grad
 
@@ -196,6 +208,27 @@ class ModelFuncs(object):
         # do training
         if not his.should_terminate:
             for sts in opt:
+                gradient = None
+
+                if large_gradient_threshold > 0:
+                    gradient = gather(sts['gradient'])
+                    lgv = self.ps.find_large_gradient_vars(gradient, threshold=large_gradient_threshold)
+                    if len(lgv) > 0:
+                        print "parameters with large gradient: "
+                        print lgv
+
+                if print_gradient_info:
+                    gradient = gather(sts['gradient'])
+                    gradient_magnitude = np.sqrt(np.sum(gradient ** 2))
+                    print "|gradient| = %.3f" % gradient_magnitude
+
+                # if gradient is available anyway, check for NaNs and Infs
+                if gradient is not None:
+                    if not np.all(np.isfinite(gradient)):
+                        his.should_terminate = True
+                        his.termination_reason = 'inf_or_nan_gradient'
+                        break
+
                 if self.next_minibatch():
                     # iteration finished
                     iter += 1
@@ -206,13 +239,13 @@ class ModelFuncs(object):
                             break
 
                 # save checkpoint if necessary
-                if checkpoint_handler and checkpoint_handler.requested:
-                    his.stop()
-                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter)
-
-                if checkpoint_handler and his.should_save_checkpoint:
-                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
-                    his.checkpoint_saved()
+                if checkpoint_handler is not None:
+                    if checkpoint_handler.requested:
+                        his.stop()
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter)
+                    if his.should_save_checkpoint:
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
+                        his.checkpoint_saved()
 
         self.after_training(his)
 

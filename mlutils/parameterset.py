@@ -136,35 +136,47 @@ class ParameterSet(object):
         self.views[key][:] = value
 
     def var_at_index(self, index):
-        """Assuming the views/vars-dictionary order never changes, return the
-        variable name, the value at the given index belongs to, the index within
-        that variable is appended to the variable name"""
-        assert index < self._data.size, 'index out of bounds'
+        """
+        Returns the variable name, the value at the given index belongs to, the index within
+        that variable is appended to the variable name.
+        :param index: index within flat view
+        :return: "variable_name[index]"
+        """
+        index = int(index)
+        if not (0 <= index < self._data.size):
+            raise ValueError("index %d out of bounds" % index)
         iter_index = 0
         for param in self.views:
             if index < iter_index + self.views[param].size:
-                return '%s__%i' % (param, index-iter_index)
+                return '%s[%i]' % (param, index - iter_index)
             iter_index += self.views[param].size
 
     def indices_at_var(self, key):
-        """
+        """Returns a tuple containing the index range of the given variable name.
+        :param key: variable name
+        :return: (start_index, end_index+1)
         """
         if not key in self.views:
-            print 'Parameterset does not contain %s' % key
-            return
+            raise ValueError("Parameterset does not contain %s" % key)
         iter_index = 0
         for param in self.views:
             if param == key:
                 return (iter_index, iter_index + self.views[param].size)
             iter_index += self.views[param].size
 
-    def find_highloss_pars(self, loss, threshold):
-        assert loss.size == self.data.size, 'loss should be calculated' \
-                                            'with respect to variables in ps'
+    def find_large_gradient_vars(self, grad, threshold=1.0):
+        """
+        Finds elements within the gradient that exceed a given threshold.
+        :param grad: the gradient w.r.t. to this ParameterSet
+        :param threshold: threshold for large value
+        :return: a dict of large value gradient elements (resolved to variables names)
+                 and their respective values
+        """
+        assert grad.size == self.data.size, 'grad should be calculated with respect to variables in ps'
         params = {}
-        for i in range(loss.size):
-            if abs(loss[i]) >= threshold:
-                params.update({i: (self.var_at_index(i), loss[i])})
+        for i in range(grad.size):
+            if abs(grad[i]) >= threshold:
+                params.update({i: (self.var_at_index(i), grad[i])})
         return params
 
 
