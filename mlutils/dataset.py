@@ -33,7 +33,7 @@ class Dataset(object):
         if minibatch_size is not None:
             self._minibatch_size = int(minibatch_size)
         else:
-            self._minibatch_size = 9999999999
+            self._minibatch_size = None
         self._pad_data = pad_data
         self._seed = seed
         self._with_all = with_all
@@ -153,12 +153,18 @@ class Dataset(object):
             n = int(n)
             if n < 0 or n > self.n_minibatches:
                 raise ValueError("minibatch out of range")
-            return Dataset.Minibatch(self, n * self._minibatch_size, (n + 1) * self._minibatch_size)
+            if self._minibatch_size is not None:
+                return Dataset.Minibatch(self, n * self._minibatch_size, (n + 1) * self._minibatch_size)
+            else:
+                return Dataset.Minibatch(self, 0, self.n_samples)
 
         @property
         def n_minibatches(self):
             """Number of minibatches"""
-            return int(ceil(self.n_samples / self._minibatch_size))
+            if self._minibatch_size is not None:
+                return int(ceil(self.n_samples / self._minibatch_size))
+            else:
+                return 1
 
     class Minibatch(object):
         """Minibatch of a dataset partition (train / validation / test).

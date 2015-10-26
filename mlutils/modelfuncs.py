@@ -123,13 +123,22 @@ class ModelFuncs(object):
         :type history: ParameterHistory
         :return: true, if training should be terminated, false other.
         """
-        history.add(iter, self.ps.data, self.trn_loss, self.val_loss, self.tst_loss)
+        if self.dataset.val.n_samples > 0:
+            val_loss = self.val_loss
+        else:
+            val_loss = self.trn_loss
+        if self.dataset.tst.n_samples > 0:
+            tst_loss = self.tst_loss
+        else:
+            tst_loss = 0
+        history.add(iter, self.ps.data, self.trn_loss, val_loss, tst_loss)
         return history.should_terminate
 
     def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10,
                          max_missed_val_improvements=200, iteration_gain=1.25, reset_termination_criteria=False,
                          desired_loss=None, initialize=True,
-                         large_gradient_threshold=0.0, print_gradient_info=False):
+                         large_gradient_threshold=0.0, print_gradient_info=False, print_gradient=False,
+                         print_parameters=False):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -145,6 +154,7 @@ class ModelFuncs(object):
         :param large_gradient_threshold: if specified, a check for large gradient elements that exceed the
                                          given threshold is performed every iteration and they are printed.
         :param print_gradient_info: if True, this function prints diagnostic gradient information
+        :param print_gradient: if True, this function prints the full gradient every minibatch
         :return: ParameterHistory object of training
         """
 
@@ -192,7 +202,7 @@ class ModelFuncs(object):
             # start and endtimes in his should have the same length, this is
             # not the case in explicit auto-save checkpoints, therefore set the
             # end to the saved
-            if (len(his.start_time) != len(his.end_time)):
+            if len(his.start_time) != len(his.end_time):
                 his.end_time.append(checkpoint['save_time'])
             his.start()
 
@@ -221,6 +231,20 @@ class ModelFuncs(object):
                     gradient = gather(sts['gradient'])
                     gradient_magnitude = np.sqrt(np.sum(gradient ** 2))
                     print "|gradient| = %.3f" % gradient_magnitude
+
+                if print_parameters:
+                    pars = gather(self.ps.data)
+                    pars_var = self.ps.split_gradient(pars)
+                    print "parameters at iteration %d:" % iter
+                    for name, value in pars_var.iteritems():
+                        print "%10s: %s" % (name, repr(list(value)))
+
+                if print_gradient:
+                    gradient = gather(sts['gradient'])
+                    gradient_var = self.ps.split_gradient(gradient)
+                    print "gradient at iteration %d:" % iter
+                    for name, value in gradient_var.iteritems():
+                        print "%10s: %s" % (name, repr(list(value)))
 
                 # if gradient is available anyway, check for NaNs and Infs
                 if gradient is not None:

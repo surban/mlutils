@@ -179,4 +179,21 @@ class ParameterSet(object):
                 params.update({i: (self.var_at_index(i), grad[i])})
         return params
 
+    def split_gradient(self, grad):
+        """
+        Splits the passed gradient into individual gradients w.r.t. to the variables of this ParameterSet.
+        :param grad: the gradient w.r.t. to this ParameterSet
+        :return: a dict of (variable name, gradient) pairs
+        """
+        assert grad.size == self.data.size, 'grad should be calculated with respect to variables in ps'
+
+        var_grad = {}
+        pos = 0
+        for param in self.views:
+            size = self.views[param].size
+            var_grad[param] = grad[pos : pos + size]
+            pos += size
+        return var_grad
+
+
 
