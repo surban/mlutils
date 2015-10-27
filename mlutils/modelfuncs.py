@@ -35,7 +35,7 @@ class ModelFuncs(object):
                 varname = name[len(prefix):]
                 value = getattr(self.cfg, name)
 
-                print "Constant paramter %s = %s" % (varname, repr(value))
+                print "Constant parameter: %015s = %s" % (varname, repr(value))
                 self.ps.constants[varname] = post(value)
 
     @property
@@ -286,6 +286,7 @@ class ModelFuncs(object):
 
                 if self.next_minibatch():
                     # iteration finished
+                    self.after_iteration(his, iter)
                     iter += 1
 
                     # calculate losses
@@ -302,6 +303,7 @@ class ModelFuncs(object):
                         checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
                         his.checkpoint_saved()
 
+        # training finished
         self.after_training(his)
 
         # save results and plot loss
@@ -312,10 +314,18 @@ class ModelFuncs(object):
 
         return his
 
+    def after_iteration(self, his, iteration):
+        """
+        Called by generic_training after one training iteration has been performed.
+        :param his: used training history
+        :param iteration: iteration number of just finished training iteration
+        """
+        pass
+
     def after_training(self, his):
         """
         Called by generic_training after training is finished.
         For example this function can be used to add custom error measures to the training history.
-        :param his: used training historz
+        :param his: used training history
         """
         pass

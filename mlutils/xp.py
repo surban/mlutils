@@ -55,6 +55,18 @@ def sign(x):
     else:
         return gp.sign(x)
 
+def zeros(shape):
+    if gpu.GPU:
+        return gp.zeros(shape)
+    else:
+        return np.zeros(shape)
+
+def ones(shape):
+    if gpu.GPU:
+        return gp.ones(shape)
+    else:
+        return np.ones(shape)
+
 
 
 

@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
 # mostly taken from Breze
-from operator import add
 
 import os
 import sys
-from gnumpy import garray
 import numpy as np
 import theano
 import theano.tensor as T
 import theano.sandbox.cuda
 from . import gpu
+from mlutils import xp
 from mlutils.gpu import post
 
 GPU = gpu.GPU
 if GPU:
     import gnumpy
-
+    from gnumpy import garray
 
 
 class ParameterSet(object):
@@ -73,8 +72,11 @@ class ParameterSet(object):
 
         # Find out total size of needed parameters and create memory for it.
         sizes = [np.prod(i) for i in kwargs.values()]
-
         self.n_pars = sum(sizes)
+
+        # print statistics
+        print "Model parameter sizes: "
+        print "Number of model parameters: %d" % self.n_pars
 
         # Create two representations of the parameters of the object. The first
         # is the symbolic theano variable (of which the type is GPU/CPU
@@ -163,8 +165,8 @@ class ParameterSet(object):
         :param key: variable name
         :return: (start_index, end_index+1)
         """
-        if not key in self.views:
-            raise ValueError("Parameterset does not contain %s" % key)
+        if key not in self.views:
+            raise ValueError("ParameterSet does not contain %s" % key)
         iter_index = 0
         for param in self.views:
             if param == key:
@@ -207,6 +209,8 @@ class ParameterSet(object):
         Ensures that all constant variables have their required values.
         """
         for var, value in self.constants.iteritems():
+            if isinstance(value, (int, float)):
+                value = value * xp.ones(self[var].shape)
             if GPU and not isinstance(value, garray):
                 raise TypeError("constant value for variable %s is not a garray although this "
                                 "ParameterSet is stored on the GPU" % var)
@@ -222,10 +226,13 @@ class ParameterSet(object):
             return grad
         rngs = [self.indices_at_var(var) for var in self.constants.iterkeys()]
         idxs = [np.arange(*rng) for rng in rngs]
-        sel = reduce(np.concatenate, idxs, [])
-        print "setting gradient elements to zero: ", sel
+        sel = reduce(lambda a, b: np.concatenate((a,b)), idxs, [])
+        # print "setting gradient elements to zero: ", sel
         sel = post(sel)
-        grad[sel] = 0
+        if GPU:
+            grad[sel] = gnumpy.zeros((len(sel),))
+        else:
+            grad[sel] = 0
         return grad
 
 
