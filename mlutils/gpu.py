@@ -2,6 +2,7 @@
 import os
 import sys
 import theano
+import theano.printing
 import theano.sandbox.cuda
 import gnumpy
 import numpy as np
@@ -231,6 +232,8 @@ def var_exp_for_gpu(variables, exprs, outputs=True):
             expr = theano.clone(expr, {v: gv})
         # (3)
         if outputs:
+            # print "processing: "
+            # theano.printing.debugprint(expr)
             expr = cpu_expr_to_gpu(expr)
         gpu_exprs_flat.append(expr)
 

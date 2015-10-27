@@ -23,6 +23,21 @@ class ModelFuncs(object):
         self._minibatch = None
         self.minibatch_idx = 0
 
+        self.set_constant_parameters_from_cfg()
+
+    def set_constant_parameters_from_cfg(self):
+        """
+        Sets constant parameters in the ParameterSet from the configuration.
+        """
+        prefix = 'const_'
+        for name in dir(self.cfg):
+            if name.startswith(prefix):
+                varname = name[len(prefix):]
+                value = getattr(self.cfg, name)
+
+                print "Constant paramter %s = %s" % (varname, repr(value))
+                self.ps.constants[varname] = post(value)
+
     @property
     def minibatch(self):
         return self._minibatch
@@ -51,7 +66,9 @@ class ModelFuncs(object):
 
     @property
     def ps(self):
-        """The parameterset of the model."""
+        """The parameterset of the model.
+        :type: ParameterSet
+        """
         return self.model.ps
 
     def init_parameters(self, var=None):
@@ -66,6 +83,7 @@ class ModelFuncs(object):
                 var = 0.01
         print "Initializing parameters with variance %f" % var
         self.ps.data[:] = post(np.random.normal(0, var, size=self.model.ps.data.shape))
+        self.ps.restore_constants()
 
     def load_parameters(self, filename):
         """Loads the parameters of the ParameterSet of the model from the given file."""
@@ -158,25 +176,37 @@ class ModelFuncs(object):
         :return: ParameterHistory object of training
         """
 
+        # build gradient preprocessing chain
+        grad_func = self.mb_loss_grad
+
         # gradient magnitude cap
         if 'gradient_cap' in dir(self.cfg) and self.cfg.gradient_cap is not None:
+            grad_with_cap_orig_grad = grad_func
             def grad_with_cap(pv):
-                g = self.mb_loss_grad(pv)
+                g = grad_with_cap_orig_grad(pv)
                 g_mag = xp.sqrt(xp.sum(g**2))
                 if g_mag > self.cfg.gradient_cap:
                     print "gradient magnitude %f is being rescaled" % g_mag
                     g *= self.cfg.gradient_cap / g_mag
                 return g
             grad_func = grad_with_cap
-        elif 'gradient_element_cap' in dir(self.cfg) and self.cfg.gradient_element_cap is not None:
+
+        # gradient element cap
+        if 'gradient_element_cap' in dir(self.cfg) and self.cfg.gradient_element_cap is not None:
+            grad_with_element_cap_orig_grad = grad_func
             def grad_with_element_cap(pv):
-                g = self.mb_loss_grad(pv)
+                g = grad_with_element_cap_orig_grad(pv)
                 elems = xp.where(xp.abs(g) > self.cfg.gradient_element_cap)
                 g[elems] = xp.sign(g[elems]) * self.cfg.gradient_element_cap
                 return g
             grad_func = grad_with_element_cap
-        else:
-            grad_func = self.mb_loss_grad
+
+        # gradient of constants set to zero
+        grad_without_const_orig_grad = grad_func
+        def grad_without_const(pv):
+            g = grad_without_const_orig_grad(pv)
+            return self.ps.nullify_gradient_of_constants(g)
+        grad_func = grad_without_const
 
         # create optimizer
         opt = optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, grad_func)
@@ -217,6 +247,7 @@ class ModelFuncs(object):
 
         # do training
         if not his.should_terminate:
+            self.ps.restore_constants()
             for sts in opt:
                 gradient = None
 

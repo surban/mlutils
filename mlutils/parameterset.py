@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 # mostly taken from Breze
+from operator import add
 
 import os
 import sys
+from gnumpy import garray
 import numpy as np
 import theano
 import theano.tensor as T
 import theano.sandbox.cuda
 from . import gpu
-
+from mlutils.gpu import post
 
 GPU = gpu.GPU
 if GPU:
@@ -98,7 +100,7 @@ class ParameterSet(object):
                 raise ValueError("%s is an illegal name for a variable")
 
             # Get the region from the big flat array.
-            region = self._data[n_used:n_used + size]
+            region = self._data[n_used : n_used + size]
             # Then shape it correctly and make it accessible from the outside.
             region = region.reshape(shape)
             self.views[key] = region
@@ -109,6 +111,11 @@ class ParameterSet(object):
             setattr(self, key, var)
 
             n_used += size
+
+        self.constants = {}
+        """Constant values for variables.
+        restore_constants must be called after every update to ensure that constants have
+        their requested value."""
 
     @property
     def vars(self):
@@ -195,5 +202,30 @@ class ParameterSet(object):
             pos += size
         return var_grad
 
+    def restore_constants(self):
+        """
+        Ensures that all constant variables have their required values.
+        """
+        for var, value in self.constants.iteritems():
+            if GPU and not isinstance(value, garray):
+                raise TypeError("constant value for variable %s is not a garray although this "
+                                "ParameterSet is stored on the GPU" % var)
+            self[var] = value
+
+    def nullify_gradient_of_constants(self, grad):
+        """
+        Sets the elements corresponding to constants in this ParameterSet to zero in the gradient inplace.
+        :param grad: the gradient
+        :return: the gradient with zero elements for constants
+        """
+        if len(self.constants) == 0:
+            return grad
+        rngs = [self.indices_at_var(var) for var in self.constants.iterkeys()]
+        idxs = [np.arange(*rng) for rng in rngs]
+        sel = reduce(np.concatenate, idxs, [])
+        print "setting gradient elements to zero: ", sel
+        sel = post(sel)
+        grad[sel] = 0
+        return grad
 
 
