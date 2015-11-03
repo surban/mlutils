@@ -12,6 +12,6 @@ setup(
     description="machine learning utils",
     license="BSD",
     packages=find_packages(exclude=['examples', 'docs']),
-    include_package_data=True, requires=['theano']
+    include_package_data=True, requires=['theano', 'matplotlib']
 )
 

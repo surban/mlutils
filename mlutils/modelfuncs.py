@@ -6,6 +6,7 @@ from mlutils.config import optimizer_from_cfg
 from mlutils.dataset import Dataset
 from mlutils.gpu import post, gather
 from mlutils.parameterhistory import ParameterHistory
+from mlutils.parameterlogger import ParameterLogger
 
 
 class ModelFuncs(object):
@@ -156,7 +157,8 @@ class ModelFuncs(object):
                          max_missed_val_improvements=200, iteration_gain=1.25, reset_termination_criteria=False,
                          desired_loss=None, initialize=True,
                          large_gradient_threshold=0.0, print_gradient_info=False, print_gradient=False,
-                         print_parameters=False):
+                         print_parameters=False, log_parameters=[], plot_logged_parameters=True,
+                         print_logged_parameters=False):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -173,6 +175,10 @@ class ModelFuncs(object):
                                          given threshold is performed every iteration and they are printed.
         :param print_gradient_info: if True, this function prints diagnostic gradient information
         :param print_gradient: if True, this function prints the full gradient every minibatch
+        :param log_parameters: list of parameter names (from self.ps) that should be logged every iteration
+                               to file params.out
+        :param plot_logged_parameters: if True, logged parameters are plotted to params.png
+        :param print_logged_parameters: if True, logged parameters are also printed to standard output
         :return: ParameterHistory object of training
         """
 
@@ -213,28 +219,37 @@ class ModelFuncs(object):
 
         # initialize or restore checkpoint, if available
         if not checkpoint:
+            iter = 0
             if initialize:
                 self.init_parameters()
+
             his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters,
                                    max_missed_val_improvements=max_missed_val_improvements,
                                    desired_loss=desired_loss, iteration_gain=iteration_gain)
-            iter = 0
-            # Record initial loss
+            logger = ParameterLogger(out_dir=cfg_dir, parameters=log_parameters,
+                                     plot=plot_logged_parameters, print_stdout=print_logged_parameters)
+
+            # Record initial loss and parameters
             self.record_loss(his, iter)
+            logger.log(iter, self.ps)
         else:
+            iter = checkpoint['iter']
             self.ps.data[:] = post(checkpoint['data'])
+
             his = checkpoint['his']
             his.state_dir = cfg_dir
             his.max_missed_val_improvements = max_missed_val_improvements
             his.desired_loss = desired_loss
-            setattr(his, 'iteration_gain', iteration_gain)
-            iter = checkpoint['iter']
+            his.iteration_gain = iteration_gain
+
             # start and endtimes in his should have the same length, this is
             # not the case in explicit auto-save checkpoints, therefore set the
             # end to the saved
             if len(his.start_time) != len(his.end_time):
                 his.end_time.append(checkpoint['save_time'])
             his.start()
+
+            logger = checkpoint['logger']
 
         # reset termination criteria if requested
         second_chance_file = join(cfg_dir, "2nd_chance")
@@ -287,7 +302,11 @@ class ModelFuncs(object):
                 if self.next_minibatch():
                     # iteration finished
                     self.after_iteration(his, iter)
+
                     iter += 1
+
+                    # log parameters
+                    logger.log(iter, self.ps)
 
                     # calculate losses
                     if iter % loss_record_interval == 0:
@@ -298,9 +317,10 @@ class ModelFuncs(object):
                 if checkpoint_handler is not None:
                     if checkpoint_handler.requested:
                         his.stop()
-                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter)
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, logger=logger)
                     if his.should_save_checkpoint:
-                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, logger=logger,
+                                                explicit=True)
                         his.checkpoint_saved()
 
         # training finished
@@ -311,6 +331,7 @@ class ModelFuncs(object):
             his.stop()
             checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
         his.finish()
+        logger.plot()
 
         return his
 
