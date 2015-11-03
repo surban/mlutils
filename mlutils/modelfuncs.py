@@ -263,7 +263,22 @@ class ModelFuncs(object):
         # do training
         if not his.should_terminate:
             self.ps.restore_constants()
+            last_pars = xp.copy(self.ps.data)
+
+            # optimize
             for sts in opt:
+                # element change cap
+                if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
+                    d = self.ps.data - last_pars
+                    for par, lim in self.cfg.step_element_cap.iteritems():
+                        start, stop = self.ps.indices_of_var(par)
+                        dpar = d[start:stop]
+                        elems = xp.where(xp.abs(dpar > lim))
+                        dpar[elems] = xp.sign(dpar[elems]) * lim
+                    self.ps.data[:] = last_pars + d
+                    last_pars = xp.copy(self.ps.data)
+
+                # perform gradient debugging operations
                 gradient = None
 
                 if large_gradient_threshold > 0:

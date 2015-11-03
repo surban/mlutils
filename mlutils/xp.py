@@ -67,6 +67,11 @@ def ones(shape):
     else:
         return np.ones(shape)
 
-
+def copy(x):
+    check_type(x)
+    if is_np(x):
+        return np.copy(x)
+    else:
+        return gp.garray(x, copy=True)
 
 

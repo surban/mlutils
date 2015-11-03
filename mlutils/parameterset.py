@@ -160,7 +160,7 @@ class ParameterSet(object):
                 return '%s[%i]' % (param, index - iter_index)
             iter_index += self.views[param].size
 
-    def indices_at_var(self, key):
+    def indices_of_var(self, key):
         """Returns a tuple containing the index range of the given variable name.
         :param key: variable name
         :return: (start_index, end_index+1)
@@ -224,7 +224,7 @@ class ParameterSet(object):
         """
         if len(self.constants) == 0:
             return grad
-        rngs = [self.indices_at_var(var) for var in self.constants.iterkeys()]
+        rngs = [self.indices_of_var(var) for var in self.constants.iterkeys()]
         idxs = [np.arange(*rng) for rng in rngs]
         sel = reduce(lambda a, b: np.concatenate((a,b)), idxs, [])
         # print "setting gradient elements to zero: ", sel
