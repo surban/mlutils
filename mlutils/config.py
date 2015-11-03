@@ -11,7 +11,7 @@ import pickle
 import signal
 import itertools
 import __main__ as main
-from os.path import isfile, exists
+from os.path import isfile, exists, split, abspath, isdir, join
 import climin
 from argparse import ArgumentParser
 
@@ -47,8 +47,10 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     """Reads the configuration file cfg.py from the configuration directory
     specified as the first parameter on the command line.
     Returns a tuple consisting of the configuration module and the plot directory.
-    :param clean_outputs: plot and data files are removed from the config directory
+    :param config_name: Configuration to load (can be specified relative to the cfgs directory).
+                        If not specified, the command line is parsed to get the configuration file.
     :param prepend: Prepend subdirectory for config file. Use %SCRIPTNAME% to insert name of running script.
+    :param clean_outputs: plot and data files are removed from the config directory
     :param with_checkpoint: enables checkpoint support
     :param defaults: default values for non-specified configuration variables
     :param forece_restart: if True, checkpoint loading is inhibited.
@@ -56,9 +58,20 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
               if with_checkpoint == False: (cfg module, cfg directory)
     """
     outdir = None
+
+    # gather information
+    print "Host: %s" % gethostname()
+    try:
+        scriptname, scriptext = os.path.splitext(os.path.basename(main.__file__))
+        print "Script: %s" % (scriptname + scriptext)
+    except AttributeError:
+        scriptname = "unknown"
+    prepend = prepend.replace("%SCRIPTNAME%", scriptname)
+
+    # parse command line arguments if cfg was not specified as function parameter
     if config_name is None:
         parser = ArgumentParser()
-        parser.add_argument('cfg', help="configuration to load (specified relative to the cfgs directory)")
+        parser.add_argument('cfg', help="configuration to load (can be specified relative to the cfgs directory)")
         parser.add_argument('--out-dir', help="output directory (by default config directory is used)")
         if with_checkpoint:
             parser.add_argument('--restart', action='store_true', help="inhibits loading of an available checkpoint")
@@ -70,23 +83,28 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         if with_checkpoint:
             force_restart = args.restart
 
-    print "Host: %s" % gethostname()
+    # determine path to configuration file
+    if isfile(config_name):
+        # path to config file was specified
+        cfgname = abspath(config_name)
+        cfgdir, _ = split(cfgname)
+    elif isfile(join(config_name, 'cfg.py')):
+        # path to config directory was specified
+        cfgdir = abspath(config_name)
+        cfgname = join(cfgdir, 'cfg.py')
+    else:
+        # treat specified configuration as relative to the configuration root directory
+        cfgdir = abspath(join(cfgs_dir(), prepend, config_name))
+        cfgname = join(cfgdir, 'cfg.py')
 
-    try:
-        scriptname, scriptext = os.path.splitext(os.path.basename(main.__file__))
-        print "Script: %s" % (scriptname + scriptext)
-    except AttributeError:
-        scriptname = "unknown"
-
-    prepend = prepend.replace("%SCRIPTNAME%", scriptname)
-    cfgdir = os.path.join(cfgs_dir(), prepend, config_name)
-    cfgname = os.path.join(cfgdir, 'cfg.py')
+    # load configuration file
     if not os.path.exists(cfgname):
         raise RuntimeError("Config: %s not found" % cfgname)
     print "Config: %s" % cfgname
     sys.dont_write_bytecode = True
     cfg = imp.load_source('cfg', cfgname)
 
+    # prepare output directory
     if outdir is None:
         outdir = cfgdir
     print "Output directory: %s" % outdir
