@@ -10,6 +10,7 @@ import theano.sandbox.cuda
 from . import gpu
 from mlutils import xp
 from mlutils.gpu import post
+from operator import add
 
 GPU = gpu.GPU
 if GPU:
@@ -52,7 +53,7 @@ class ParameterSet(object):
         Concrete array containig all the different arrays flattened out.
         Concrete pendant to ``flat``.
 
-    views : dictionary
+    _num_var_slices : dictionary
         All parameter arrays can be accessed by with their identifier as key
         in this dictionary.
 
@@ -66,149 +67,222 @@ class ParameterSet(object):
     """
 
     def __init__(self, **kwargs):
-        # Make sure all size specifications are tuples.
-        kwargs = dict((k, v if isinstance(v, tuple) else (v,))
-                      for k, v in kwargs.iteritems())
+        self._constants = {}
+        self._constants_selector = []
+        self._constants_zeros = []
+
+        # extract partition specification
+        if 'partitions' in kwargs:
+            partitions = dict(kwargs['partitions'])
+            del kwargs['partitions']
+        else:
+            partitions = {}
+
+        # extract variable shapes as tuples and verify
+        shapes = dict((k, v if isinstance(v, tuple) else (v,)) for k, v in kwargs.iteritems())
+        for name in shapes.iterkeys():
+            if not isinstance(name, basestring):
+                raise TypeError("variable name must be a string")
+            if hasattr(self, name):
+                raise ValueError("variable name %s is illegal because it would override an object attribute" % name)
+
+        # verify partitions
+        for name, members in partitions.iteritems():
+            if not isinstance(name, basestring):
+                raise TypeError("partition name must be a string")
+            if not isinstance(members, list):
+                raise TypeError("partition member specification must be a list of variable names")
+            for var in members:
+                if not isinstance(var, basestring):
+                    raise TypeError("partition member specification must be a list of variable names")
+
+        # put vars without partition specification into _default partition
+        vars_in_partitions = reduce(add, partitions.itervalues(), [])
+        for var in vars_in_partitions:
+            if var not in shapes:
+                raise ValueError("variable %s from partition specification has no shape specification" % var)
+            if vars_in_partitions.count(var) != 1:
+                raise ValueError("variable %s appears in multiple parameter partitions" % var)
+        all_vars = shapes.keys()
+        partitions['_default'] = list(set(all_vars) - set(vars_in_partitions))
+
+        # sort partitions and their members to obtain a stable ordering
+        partition_order = sorted(partitions.keys())
+        for partition, members in partitions.iteritems():
+            partitions[partition] = sorted(members)
+
+        # compute layout of variables and partitions
+        pos = 0
+        self._var_layout = {}
+        self._part_layout = {}
+        for partition in partition_order:
+            part_start = pos
+            for var in partitions[partition]:
+                size = np.prod(shapes[var])
+                self._var_layout[var] = (pos, pos + size)
+                pos += size
+            self._part_layout[partition] = (part_start, pos)
+        self.n_pars = pos
 
         # Find out total size of needed parameters and create memory for it.
-        sizes = [np.prod(i) for i in kwargs.values()]
-        self.n_pars = sum(sizes)
-
-        # print statistics
-        print "Model parameter sizes: "
-        print "Number of model parameters: %d" % self.n_pars
+        sizes = [np.prod(i) for i in shapes.values()]
 
         # Create two representations of the parameters of the object. The first
-        # is the symbolic theano variable (of which the type is GPU/CPU
-        # specific), the second either a gnumpy or numpy array (depending on
-        # GPU/CPU again). Also set a default size for testing.
+        # is the symbolic Theano variable, the second is a numeric array.
         if GPU:
-            self._data = gnumpy.zeros(self.n_pars)
-            self._flat = theano.sandbox.cuda.fvector('parameters')
+            self._num_data = gnumpy.zeros(self.n_pars)
+            self._sym_data = theano.sandbox.cuda.fvector('parameters')
         else:
-            self._data = np.empty(self.n_pars).astype(theano.config.floatX)
-            self._flat = T.vector('parameters')
+            self._num_data = np.empty(self.n_pars).astype(theano.config.floatX)
+            self._sym_data = T.vector('parameters')
+        self._sym_data.tag.test_value = self._num_data
 
-        self._flat.tag.test_value = self._data
+        # assign numeric and symbolic slices to variables
+        self._num_var_slices = {}
+        self._sym_var_slices = {}
+        for var, shape in shapes.iteritems():
+            start, stop = self._var_layout[var]
+            self._num_var_slices[var] = self._num_data[start : stop].reshape(shape)
+            self._sym_var_slices[var] = self._sym_data[start : stop].reshape(shape)
+            self._sym_var_slices[var].name = var
 
-        # Go through parameters and assign space and variable.
-        self.views = {}
-        n_used = 0 	# Number of used parameters.
+        # assign numeric and symbolic slices to partitions
+        self._num_part_slices = {}
+        self._sym_part_slices = {}
+        for part, (start, stop) in self._part_layout.iteritems():
+            self._num_part_slices[part] = self._num_data[start : stop]
+            self._sym_part_slices[part] = self._sym_data[start : stop]
+            self._sym_part_slices[part].name = 'partition_' + part
 
-        for (key, shape), size in zip(kwargs.items(), sizes):
-            # Make sure the key is legit -- that it does not overwrite
-            # anything.
-            if hasattr(self, key):
-                raise ValueError("%s is an illegal name for a variable")
+        # print statistics
+        print "Model parameters: "
+        print "Total count:      %d" % self.n_pars
+        print "Partitions:       %s" % repr(partitions)
 
-            # Get the region from the big flat array.
-            region = self._data[n_used : n_used + size]
-            # Then shape it correctly and make it accessible from the outside.
-            region = region.reshape(shape)
-            self.views[key] = region
-
-            # Get the right variable as a subtensor.
-            var = self._flat[n_used:n_used + size].reshape(shape)
-            var.name = key
-            setattr(self, key, var)
-
-            n_used += size
-
-        self.constants = {}
-        """Constant values for variables.
-        restore_constants must be called after every update to ensure that constants have
-        their requested value."""
+    ###########################################################################
+    # numeric/symbolic access to flat vector of all variables
+    ###########################################################################
 
     @property
-    def vars(self):
-        """All Theano vectors can be accessed by with their identifier as key
-        in this dictionary."""
-        return {k: getattr(self, k) for k in self.views.iterkeys()}
+    def sym_vars(self):
+        """Dicitionary of variable names and their corresponding symbolic variables."""
+        return self._sym_var_slices.copy()
 
     @property
-    def data(self):
-        """Actual numerical data values (numpy array) of this ParameterSet"""
-        return self._data
+    def num_vars(self):
+        """Dicitionary of variable names and their corresponding numeric variables."""
+        return self._num_var_slices.copy()
 
     @property
-    def flat(self):
-        """Symbolic Theano variable corresponding to the values of this ParameterSet"""
-        return self._flat
+    def sym_data(self):
+        """Symbolic variable corresponding to all values of this ParameterSet in a flat array."""
+        return self._sym_data
 
-    def __contains__(self, key):
-        return key in self.views
+    @property
+    def num_data(self):
+        """All numerical data values of this ParameterSet in a flat array."""
+        return self._num_data
 
-    def __getitem__(self, key):
-        return self.views[key]
-
-    def __setitem__(self, key, value):
-        self.views[key][:] = value
-
-    def var_at_index(self, index):
+    def num_partition(self, partiton):
         """
-        Returns the variable name, the value at the given index belongs to, the index within
-        that variable is appended to the variable name.
-        :param index: index within flat view
-        :return: "variable_name[index]"
+        Flat numeric vector of all variable values in the specified partition.
+        :param partiton: partition
+        :return: flat array of numeric values
+        """
+        return self._num_part_slices[partiton]
+
+    ###########################################################################
+    # variable localization within flat vector
+    ###########################################################################
+
+    def var_at(self, index):
+        """
+        Returns the variable name the value at the given index belongs to and the corresponding
+        index within that variable.
+        :param index: index within self.num_data
+        :return: (variable_name, index_within)
         """
         index = int(index)
-        if not (0 <= index < self._data.size):
+        if not (0 <= index < self._num_data.size):
             raise ValueError("index %d out of bounds" % index)
-        iter_index = 0
-        for param in self.views:
-            if index < iter_index + self.views[param].size:
-                return '%s[%i]' % (param, index - iter_index)
-            iter_index += self.views[param].size
+        for var, (start, stop) in self._var_layout.iteritems():
+            if start <= index < stop:
+                return var, index - start
 
-    def indices_of_var(self, key):
-        """Returns a tuple containing the index range of the given variable name.
-        :param key: variable name
-        :return: (start_index, end_index+1)
+    def extents_of_var(self, var):
         """
-        if key not in self.views:
-            raise ValueError("ParameterSet does not contain %s" % key)
-        iter_index = 0
-        for param in self.views:
-            if param == key:
-                return (iter_index, iter_index + self.views[param].size)
-            iter_index += self.views[param].size
+        Returns a tuple containing the index range of the given variable name.
+        :param var: variable name
+        :return: (start_index, end_index + 1)
+        """
+        return self._var_layout[var]
 
-    def find_large_gradient_vars(self, grad, threshold=1.0):
+    def extents_of_partition(self, part):
         """
-        Finds elements within the gradient that exceed a given threshold.
-        :param grad: the gradient w.r.t. to this ParameterSet
+        Returns a tuple containing the index range of the given partition name.
+        :param part: partition name
+        :return: (start_index, end_index + 1)
+        """
+        return self._part_layout[part]
+
+    ###########################################################################
+    # variable localization within flat vector
+    ###########################################################################
+
+    def find_large_elements(self, data, threshold=1.0):
+        """
+        Finds elements within a flat numeric data array that exceed a given threshold.
+        :param data: a data array of same shape as self.num_data (e.g. the gradient w.r.t. to this ParameterSet)
         :param threshold: threshold for large value
-        :return: a dict of large value gradient elements (resolved to variables names)
-                 and their respective values
+        :return: a dict of large value elements (resolved to variables names) and their respective values
         """
-        assert grad.size == self.data.size, 'grad should be calculated with respect to variables in ps'
-        params = {}
-        for i in range(grad.size):
-            if abs(grad[i]) >= threshold:
-                params.update({i: (self.var_at_index(i), grad[i])})
-        return params
+        if not data.shape == self.num_data.shape:
+            raise ValueError("shape of specified data does not match shape of this ParameterSet's data")
+        return {idx: (self.var_at(idx), data[idx])
+                for idx in range(data.size) if abs(data[idx]) >= threshold}
 
-    def split_gradient(self, grad):
+    def split(self, data):
         """
-        Splits the passed gradient into individual gradients w.r.t. to the variables of this ParameterSet.
-        :param grad: the gradient w.r.t. to this ParameterSet
-        :return: a dict of (variable name, gradient) pairs
+        Splits the passed data into individual elements w.r.t. to the variables of this ParameterSet.
+        :param data: a data array of same shape as self.num_data (e.g. the gradient w.r.t. to this ParameterSet)
+        :return: a dict of (variable name, elements) pairs
         """
-        assert grad.size == self.data.size, 'grad should be calculated with respect to variables in ps'
+        if not data.shape == self.num_data.shape:
+            raise ValueError("shape of specified data does not match shape of this ParameterSet's data")
+        vars = {}
+        for var, (start, stop) in self._var_layout:
+            vars[var] = data[start:stop]
+        return vars
 
-        var_grad = {}
-        pos = 0
-        for param in self.views:
-            size = self.views[param].size
-            var_grad[param] = grad[pos : pos + size]
-            pos += size
-        return var_grad
+    ###########################################################################
+    # constants handling
+    ###########################################################################
+
+    @property
+    def constants(self):
+        """
+        Constant values for variables.
+        restore_constants must be called after every update to ensure that constants have
+        their requested value.
+        """
+        return self._constants.copy()
+
+    @constants.setter
+    def constants(self, value):
+        self._constants = dict(value)
+
+        # build constant selector and zero array for nullifying gradient
+        idxs = [np.arange(*self.extents_of_var(var)) for var in self._constants.iterkeys()]
+        sel = reduce(lambda a, b: np.concatenate((a, b)), idxs, [])
+        sel = np.sort(sel)
+        self._constants_selector = post(sel)
+        self._constants_zeros = xp.zeros((len(sel),))
 
     def restore_constants(self):
         """
         Ensures that all constant variables have their required values.
         """
-        for var, value in self.constants.iteritems():
+        for var, value in self._constants.iteritems():
             if isinstance(value, (int, float)):
                 value = value * xp.ones(self[var].shape)
             if GPU and not isinstance(value, garray):
@@ -222,17 +296,60 @@ class ParameterSet(object):
         :param grad: the gradient
         :return: the gradient with zero elements for constants
         """
-        if len(self.constants) == 0:
+        if len(self._constants) == 0:
             return grad
-        rngs = [self.indices_of_var(var) for var in self.constants.iterkeys()]
-        idxs = [np.arange(*rng) for rng in rngs]
-        sel = reduce(lambda a, b: np.concatenate((a,b)), idxs, [])
-        # print "setting gradient elements to zero: ", sel
-        sel = post(sel)
-        if GPU:
-            grad[sel] = gnumpy.zeros((len(sel),))
-        else:
-            grad[sel] = 0
+        grad[self._constants_selector] = self._constants_zeros
         return grad
+
+    ###########################################################################
+    # expose variables as attributes and elements
+    ###########################################################################
+
+    def __contains__(self, key):
+        """Numeric variables are exposed as dict elements."""
+        return key in self._num_var_slices
+
+    def __getitem__(self, key):
+        """Numeric variables are exposed as dict elements."""
+        return self._num_var_slices[key]
+
+    def __setitem__(self, key, value):
+        """Numeric variables are exposed as dict elements."""
+        self._num_var_slices[key][:] = value
+
+    def __getattr__(self, item):
+        """Symbolic variables are exposed as attributes."""
+        return self._sym_var_slices[item]
+
+    ###########################################################################
+    # legacy interface
+    ###########################################################################
+
+    @property
+    def vars(self):
+        """
+        Dicitionary of variable names and their corresponding symbolic variables.
+        Deprecated: use sym_vars instead.
+        """
+        return self.sym_vars
+
+    @property
+    def data(self):
+        """
+        Numerical data values of this ParameterSet
+        Deprecated: use num_data instead.
+        """
+        return self.num_data
+
+    @property
+    def flat(self):
+        """
+        Symbolic Theano variable corresponding to the values of this ParameterSet.
+        Deprecated: use sym_data instead.
+        """
+        return self._sym_data
+
+
+
 
 

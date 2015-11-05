@@ -271,7 +271,7 @@ class ModelFuncs(object):
                 if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
                     d = self.ps.data - last_pars
                     for par, lim in self.cfg.step_element_cap.iteritems():
-                        start, stop = self.ps.indices_of_var(par)
+                        start, stop = self.ps.extents_of_var(par)
                         dpar = d[start:stop]
                         elems = xp.where(xp.abs(dpar > lim))
                         dpar[elems] = xp.sign(dpar[elems]) * lim
@@ -283,10 +283,11 @@ class ModelFuncs(object):
 
                 if large_gradient_threshold > 0:
                     gradient = gather(sts['gradient'])
-                    lgv = self.ps.find_large_gradient_vars(gradient, threshold=large_gradient_threshold)
+                    lgv = self.ps.find_large_elements(gradient, threshold=large_gradient_threshold)
                     if len(lgv) > 0:
                         print "parameters with large gradient: "
-                        print lgv
+                        for (var, idx), value in lgv.itervalues():
+                            print "                                %s[%d] = %.3f" % (var, idx, value)
 
                 if print_gradient_info:
                     gradient = gather(sts['gradient'])
@@ -295,14 +296,14 @@ class ModelFuncs(object):
 
                 if print_parameters:
                     pars = gather(self.ps.data)
-                    pars_var = self.ps.split_gradient(pars)
+                    pars_var = self.ps.split(pars)
                     print "parameters at iteration %d:" % iter
                     for name, value in pars_var.iteritems():
                         print "%10s: %s" % (name, repr(list(value)))
 
                 if print_gradient:
                     gradient = gather(sts['gradient'])
-                    gradient_var = self.ps.split_gradient(gradient)
+                    gradient_var = self.ps.split(gradient)
                     print "gradient at iteration %d:" % iter
                     for name, value in gradient_var.iteritems():
                         print "%10s: %s" % (name, repr(list(value)))
