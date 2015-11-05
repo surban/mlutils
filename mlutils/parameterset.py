@@ -99,7 +99,9 @@ class ParameterSet(object):
             if vars_in_partitions.count(var) != 1:
                 raise ValueError("variable %s appears in multiple parameter partitions" % var)
         all_vars = shapes.keys()
-        partitions['_default'] = list(set(all_vars) - set(vars_in_partitions))
+        remaining_vars = list(set(all_vars) - set(vars_in_partitions))
+        if len(remaining_vars) > 0:
+            partitions['_default'] = remaining_vars
 
         # sort partitions and their members to obtain a stable ordering
         partition_order = sorted(partitions.keys())
@@ -153,6 +155,11 @@ class ParameterSet(object):
         print "Model parameters: "
         print "Total count:      %d" % self.n_pars
         print "Partitions:       %s" % repr(partitions)
+
+    @property
+    def partitions(self):
+        """Partitions in this ParameterSet."""
+        return self._part_layout.keys()
 
     ###########################################################################
     # numeric/symbolic access to variables

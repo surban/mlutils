@@ -140,11 +140,46 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         return cfg, outdir
 
 
+def optimizers_from_cfg(cfg, wrt_fprime_for_name, f, print_config=True):
+    def optimizer_instance(name):
+        # get specified optimizer and its constructor
+        wrt, fprime = wrt_fprime_for_name(name)
+        class_name = 'climin.' + cfg.optimizer[name]
+        class_obj = eval(class_name)
+        init_func = class_obj.__init__
+
+        # build constructor arguments
+        args = getargspec(init_func).args
+        kwargs = {}
+        for arg in args[1:]:
+            if arg == 'wrt':
+                kwargs['wrt'] = wrt
+            elif arg == 'f':
+                if f is None:
+                    raise ValueError("optimizer requires f, but it was not specified")
+                kwargs['f'] = f
+            elif arg == 'fprime':
+                kwargs['fprime'] = fprime
+            else:
+                cfg_arg = 'optimizer_' + arg
+                if cfg_arg in dir(cfg):
+                    kwargs[arg] = getattr(cfg, cfg_arg)[name]
+
+        if print_config:
+            argstr = ", ".join(["%s=%s" % (arg, str(value)) for arg, value in kwargs.iteritems()
+                                if arg not in ['wrt', 'f', 'fprime']])
+            print "optimizer for %s: %s (%s)" % (name, cfg.optimizer[name], argstr)
+
+        return class_obj(**kwargs)
+
+    return {name: optimizer_instance(name) for name in cfg.optimizer}
+
+
 def optimizer_from_cfg(cfg, wrt, f, fprime, print_config=True):
     # get specified optimizer and its constructor
     class_name = 'climin.' + cfg.optimizer
     class_obj = eval(class_name)
-    init_func = eval(class_name + '.__init__')
+    init_func = class_obj.__init__
 
     # build constructor arguments
     args = getargspec(init_func).args

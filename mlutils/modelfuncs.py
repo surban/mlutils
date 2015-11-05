@@ -2,7 +2,7 @@ import numpy as np
 from os.path import exists, join
 from os import unlink
 from mlutils import xp
-from mlutils.config import optimizer_from_cfg
+from mlutils.config import optimizer_from_cfg, optimizers_from_cfg
 from mlutils.dataset import Dataset
 from mlutils.gpu import post, gather
 from mlutils.parameterhistory import ParameterHistory
@@ -31,13 +31,15 @@ class ModelFuncs(object):
         Sets constant parameters in the ParameterSet from the configuration.
         """
         prefix = 'const_'
+        constants = self.ps.constants
         for name in dir(self.cfg):
             if name.startswith(prefix):
                 varname = name[len(prefix):]
                 value = getattr(self.cfg, name)
 
                 print "Constant parameter: %015s = %s" % (varname, repr(value))
-                self.ps.constants[varname] = post(value)
+                constants[varname] = post(value)
+        self.ps.constants = constants
 
     @property
     def minibatch(self):
@@ -68,7 +70,7 @@ class ModelFuncs(object):
     @property
     def ps(self):
         """The parameterset of the model.
-        :type: ParameterSet
+        :type: mlutils.parameterset.ParameterSet
         """
         return self.model.ps
 
@@ -158,7 +160,7 @@ class ModelFuncs(object):
                          desired_loss=None, initialize=True,
                          large_gradient_threshold=0.0, print_gradient_info=False, print_gradient=False,
                          print_parameters=False, log_parameters=[], plot_logged_parameters=True,
-                         print_logged_parameters=False):
+                         print_logged_parameters=False, check_gradient_finite=False):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -179,6 +181,7 @@ class ModelFuncs(object):
                                to file params.out
         :param plot_logged_parameters: if True, logged parameters are plotted to params.png
         :param print_logged_parameters: if True, logged parameters are also printed to standard output
+        :param check_gradient_finite: if True, gradient is checked for infs and nans in every iteration
         :return: ParameterHistory object of training
         """
 
@@ -215,11 +218,31 @@ class ModelFuncs(object):
         grad_func = grad_without_const
 
         # create optimizer
-        opt = optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, grad_func)
+        if isinstance(self.cfg.optimizer, dict):
+            def wrt_fprime_for_part(partition):
+                wrt_for_part = self.ps.num_partition(partition)
+                def fprime_for_part(pv_part):
+                    # we assume that the optimizer updates the ParameterSet inplace and
+                    # evaluates the gradient at the current values of the parameters
+                    start, stop = self.ps.extents_of_partition(partition)
+                    return grad_func(self.ps.num_data)[start : stop]
+                return wrt_for_part, fprime_for_part
+            opts_obj = optimizers_from_cfg(self.cfg, wrt_fprime_for_part, self.mb_loss)
+            opts = {part: iter(opt_obj) for part, opt_obj in opts_obj.iteritems()}
+            partioned_opt = True
+
+            opt_parts = set(opts.keys())
+            ps_parts = set(self.ps.partitions)
+            if opt_parts != ps_parts:
+                raise ValueError("optimizer config does not cover all ParameterSet partitions or vice versa: %s" %
+                                 repr(opt_parts ^ ps_parts))
+        else:
+            opt = iter(optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, grad_func))
+            partioned_opt = False
 
         # initialize or restore checkpoint, if available
         if not checkpoint:
-            iter = 0
+            itr = 0
             if initialize:
                 self.init_parameters()
 
@@ -230,10 +253,10 @@ class ModelFuncs(object):
                                      plot=plot_logged_parameters, print_stdout=print_logged_parameters)
 
             # Record initial loss and parameters
-            self.record_loss(his, iter)
-            logger.log(iter, self.ps)
+            self.record_loss(his, itr)
+            logger.log(itr, self.ps)
         else:
-            iter = checkpoint['iter']
+            itr = checkpoint['iter']
             self.ps.data[:] = post(checkpoint['data'])
 
             his = checkpoint['his']
@@ -261,83 +284,93 @@ class ModelFuncs(object):
             his.should_terminate = False
 
         # do training
-        if not his.should_terminate:
-            self.ps.restore_constants()
-            last_pars = xp.copy(self.ps.data)
+        self.ps.restore_constants()
+        last_pars = xp.copy(self.ps.data)
+        while not his.should_terminate:
 
-            # optimize
-            for sts in opt:
-                # element change cap
-                if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
-                    d = self.ps.data - last_pars
-                    for par, lim in self.cfg.step_element_cap.iteritems():
-                        start, stop = self.ps.extents_of_var(par)
-                        dpar = d[start:stop]
-                        elems = xp.where(xp.abs(dpar > lim))
-                        dpar[elems] = xp.sign(dpar[elems]) * lim
-                    self.ps.data[:] = last_pars + d
-                    last_pars = xp.copy(self.ps.data)
+            # call optimizer(s)
+            if partioned_opt:
+                for part, opt in opts.iteritems():
+                    # print "optimizing %s" % part
+                    opt.next()
+            else:
+                opt.next()
 
-                # perform gradient debugging operations
+            # element change cap
+            if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
+                d = self.ps.data - last_pars
+                for par, lim in self.cfg.step_element_cap.iteritems():
+                    start, stop = self.ps.extents_of_var(par)
+                    dpar = d[start:stop]
+                    # print "parameter diff for %s is %s (limit is %.4f)" % (par, repr(dpar), lim)
+                    elems = xp.where(xp.abs(dpar) > lim)
+                    dpar[elems] = xp.sign(dpar[elems]) * lim
+                self.ps.data[:] = last_pars + d
+                last_pars = xp.copy(self.ps.data)
+
+            # parameter printout
+            if print_parameters:
+                pars = gather(self.ps.data)
+                pars_var = self.ps.split(pars)
+                print "parameters at iteration %d:" % itr
+                for name, value in pars_var.iteritems():
+                    print "%10s: %s" % (name, repr(list(value)))
+
+            # obtain gradient if required for debugging operations
+            if large_gradient_threshold > 0 or print_gradient_info or print_gradient:
+                gradient = gather(grad_func(self.ps.num_data))
+            else:
                 gradient = None
 
-                if large_gradient_threshold > 0:
-                    gradient = gather(sts['gradient'])
-                    lgv = self.ps.find_large_elements(gradient, threshold=large_gradient_threshold)
-                    if len(lgv) > 0:
-                        print "parameters with large gradient: "
-                        for (var, idx), value in lgv.itervalues():
-                            print "                                %s[%d] = %.3f" % (var, idx, value)
+            # check gradient for large elements
+            if large_gradient_threshold > 0:
+                lgv = self.ps.find_large_elements(gradient, threshold=large_gradient_threshold)
+                if len(lgv) > 0:
+                    print "parameters with large gradient: "
+                    for (var, idx), value in lgv.itervalues():
+                        print "                                %s[%d] = %.3f" % (var, idx, value)
 
-                if print_gradient_info:
-                    gradient = gather(sts['gradient'])
-                    gradient_magnitude = np.sqrt(np.sum(gradient ** 2))
-                    print "|gradient| = %.3f" % gradient_magnitude
+            # gradient magnitude printout
+            if print_gradient_info:
+                gradient_magnitude = np.sqrt(np.sum(gradient ** 2))
+                print "|gradient| = %.3f" % gradient_magnitude
 
-                if print_parameters:
-                    pars = gather(self.ps.data)
-                    pars_var = self.ps.split(pars)
-                    print "parameters at iteration %d:" % iter
-                    for name, value in pars_var.iteritems():
-                        print "%10s: %s" % (name, repr(list(value)))
+            # gradient printout
+            if print_gradient:
+                gradient_var = self.ps.split(gradient)
+                print "gradient at iteration %d:" % itr
+                for name, value in gradient_var.iteritems():
+                    print "%10s: %s" % (name, repr(list(value)))
 
-                if print_gradient:
-                    gradient = gather(sts['gradient'])
-                    gradient_var = self.ps.split(gradient)
-                    print "gradient at iteration %d:" % iter
-                    for name, value in gradient_var.iteritems():
-                        print "%10s: %s" % (name, repr(list(value)))
+            # check gradient for NaNs and Infs
+            if check_gradient_finite or gradient is not None:
+                if not np.all(np.isfinite(gradient)):
+                    his.should_terminate = True
+                    his.termination_reason = 'inf_or_nan_gradient'
+                    break
 
-                # if gradient is available anyway, check for NaNs and Infs
-                if gradient is not None:
-                    if not np.all(np.isfinite(gradient)):
-                        his.should_terminate = True
-                        his.termination_reason = 'inf_or_nan_gradient'
-                        break
+            if self.next_minibatch():
+                # iteration finished
+                self.after_iteration(his, itr)
 
-                if self.next_minibatch():
-                    # iteration finished
-                    self.after_iteration(his, iter)
+                itr += 1
 
-                    iter += 1
+                # log parameters
+                logger.log(itr, self.ps)
 
-                    # log parameters
-                    logger.log(iter, self.ps)
+                # calculate losses
+                if itr % loss_record_interval == 0:
+                    self.record_loss(his, itr)
 
-                    # calculate losses
-                    if iter % loss_record_interval == 0:
-                        if self.record_loss(his, iter):
-                            break
-
-                # save checkpoint if necessary
-                if checkpoint_handler is not None:
-                    if checkpoint_handler.requested:
-                        his.stop()
-                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, logger=logger)
-                    if his.should_save_checkpoint:
-                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, logger=logger,
-                                                explicit=True)
-                        his.checkpoint_saved()
+            # save checkpoint if necessary
+            if checkpoint_handler is not None:
+                if checkpoint_handler.requested:
+                    his.stop()
+                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger)
+                if his.should_save_checkpoint:
+                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger,
+                                            explicit=True)
+                    his.checkpoint_saved()
 
         # training finished
         self.after_training(his)
@@ -345,7 +378,7 @@ class ModelFuncs(object):
         # save results and plot loss
         if checkpoint_handler:
             his.stop()
-            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=iter, explicit=True)
+            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, explicit=True)
         his.finish()
         logger.plot()
 
