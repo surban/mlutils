@@ -160,8 +160,24 @@ class ParameterSet(object):
         print "Partitions:       %s" % repr(partitions)
 
     ###########################################################################
-    # numeric/symbolic access to flat vector of all variables
+    # numeric/symbolic access to variables
     ###########################################################################
+
+    def sym(self, var):
+        """
+        Symbolic variable.
+        :param var: variable name
+        :return: symbolic variable
+        """
+        return self._sym_var_slices[var]
+
+    def num(self, var):
+        """
+        Numeric variable.
+        :param var: variable name
+        :return: numeric variable view (alias)
+        """
+        return self._num_var_slices[var]
 
     @property
     def sym_vars(self):
@@ -311,7 +327,7 @@ class ParameterSet(object):
 
     def __getitem__(self, key):
         """Numeric variables are exposed as dict elements."""
-        return self._num_var_slices[key]
+        return self.num(key)
 
     def __setitem__(self, key, value):
         """Numeric variables are exposed as dict elements."""
@@ -319,7 +335,7 @@ class ParameterSet(object):
 
     def __getattr__(self, item):
         """Symbolic variables are exposed as attributes."""
-        return self._sym_var_slices[item]
+        return self.sym(item)
 
     ###########################################################################
     # legacy interface
