@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
-# mostly taken from Breze
+# taken from Breze, but now rewritten
 
-import os
-import sys
 import numpy as np
 import theano
 import theano.tensor as T
 import theano.sandbox.cuda
-from . import gpu
 from mlutils import xp
-from mlutils.gpu import post
+from mlutils.gpu import post, GPU
 from operator import add
 
-GPU = gpu.GPU
 if GPU:
     import gnumpy
     from gnumpy import garray
-
 
 class ParameterSet(object):
     """ParameterSet class.
