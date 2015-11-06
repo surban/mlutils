@@ -1,6 +1,7 @@
 from os.path import join
 from mlutils.gpu import gather
 import matplotlib.pyplot as plt
+import numpy as np
 
 class ParameterLogger(object):
     """
@@ -66,10 +67,10 @@ class ParameterLogger(object):
         line = "%5d:  " % itr
         for par in self._parameters:
             val = gather(ps[par])
-            if len(val) == 1:
-                val = "%.4f" % val[0]
+            if val.size == 1:
+                val = "%.4f" % val.flat[0]
             else:
-                val = repr(list(val))
+                val = "\n" + repr(val)
             line += "%s=%s  " % (par, val)
         line += "\n"
 
@@ -85,7 +86,7 @@ class ParameterLogger(object):
         if self._plot:
             self._itrs.append(itr)
             for par in self._parameters:
-                self._history[par].append(gather(ps[par]))
+                self._history[par].append(gather(ps[par]).flatten())
 
     def plot(self):
         """
@@ -99,6 +100,7 @@ class ParameterLogger(object):
             n_pars = len(self._parameters)
             for idx, par in enumerate(self._parameters):
                 plt.subplot(n_pars, 1, idx + 1)
+                data = np.asarray(self._history[par])
                 plt.plot(self._itrs, self._history[par])
                 plt.ylabel(par)
                 if idx == n_pars - 1:

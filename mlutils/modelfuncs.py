@@ -36,10 +36,10 @@ class ModelFuncs(object):
             if name.startswith(prefix):
                 varname = name[len(prefix):]
                 value = getattr(self.cfg, name)
-
                 print "Constant parameter: %015s = %s" % (varname, repr(value))
                 constants[varname] = post(value)
         self.ps.constants = constants
+
 
     @property
     def minibatch(self):
@@ -84,9 +84,26 @@ class ModelFuncs(object):
                 var = self.cfg.initialization_variance
             else:
                 var = 0.01
-        print "Initializing parameters with variance %f" % var
+        print "Randomly initializing parameters with variance %f" % var
         self.ps.data[:] = post(np.random.normal(0, var, size=self.model.ps.data.shape))
+
+        self.init_parameters_from_cfg()
         self.ps.restore_constants()
+
+    def init_parameters_from_cfg(self):
+        """
+        Sets initial parameters in the ParameterSet from the configuration.
+        """
+        prefix = 'initval_'
+        for name in dir(self.cfg):
+            if name.startswith(prefix):
+                varname = name[len(prefix):]
+                value = getattr(self.cfg, name)
+                print "Parameter initialization: %015s = %s" % (varname, repr(value))
+                if isinstance(value, (float, int)):
+                    self.ps[varname] = value
+                else:
+                    self.ps[varname] = post(value)
 
     def load_parameters(self, filename):
         """Loads the parameters of the ParameterSet of the model from the given file."""
@@ -378,7 +395,7 @@ class ModelFuncs(object):
         # save results and plot loss
         if checkpoint_handler:
             his.stop()
-            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, explicit=True)
+            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger, explicit=True)
         his.finish()
         logger.plot()
 
