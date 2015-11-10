@@ -128,7 +128,9 @@ class ParameterSet(object):
         # is the symbolic Theano variable, the second is a numeric array.
         if GPU:
             self._num_data = gnumpy.zeros(self.n_pars)
-            self._sym_data = theano.sandbox.cuda.fvector('parameters')
+            # we actually need to create a standard Theano variable (not theano.sandbox.cuda.fvector)
+            # because translation to GPU variables will be performed by gpu.function before compilation
+            self._sym_data = T.vector('parameters')
         else:
             self._num_data = np.empty(self.n_pars).astype(theano.config.floatX)
             self._sym_data = T.vector('parameters')

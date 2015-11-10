@@ -244,18 +244,23 @@ def var_exp_for_gpu(variables, exprs, outputs=True):
 
 def function(inputs, outputs, name=None, plot_graph=False, *args, **kwargs):
     import theano
+    if plot_graph:
+        import theano.printing
+
     if GPU:
+        if plot_graph:
+            f_cpu = theano.function(inputs, outputs, name=name, *args, **kwargs)
+            theano.printing.pydotprint(f_cpu, outfile="%s_pregpu.png" % name,
+                                       var_with_name_simple=True)
         gpu_inputs, gpu_outputs = var_exp_for_gpu(inputs, outputs)
         f = theano.function(gpu_inputs, gpu_outputs, name=name, *args, **kwargs)
         if plot_graph:
-            import theano.printing
             theano.printing.pydotprint(f, outfile="%s.png" % name,
                                        var_with_name_simple=True)
         f = gnumpy_to_ndarray_wrap(f)
     else:
         f = theano.function(inputs, outputs, name=name, *args, **kwargs)
         if plot_graph:
-            import theano.printing
             theano.printing.pydotprint(f, outfile="%s.png" % name,
                                        var_with_name_simple=True)
     return f
