@@ -7,7 +7,7 @@ class Dataset(object):
     """A dataset consisting of training, test and validation set."""
 
     def __init__(self, filename_or_ds, fractions=[0.8, 0.1, 0.1], minibatch_size=100, pad_data=False, seed=1,
-                 split_function=None, preprocessing_function=None, with_all=False):
+                 split_function=None, preprocessing_function=None, with_all=False, force_cpu=False):
         """
         Loads a dataset from a .npz file and partitions it into training, test and validation set.
         :param filename_or_ds: file that contains the dataset or
@@ -22,6 +22,7 @@ class Dataset(object):
         :param preprocessing_function: a function that takes the dataset dictionary as input and returns
                                        a preprocessed version of it
         :param with_all: if True, then self.all contains all samples of the dataset (uses additional memory)
+        :param force_cpu: forces all data to be stored in the CPU memory and exposed as numpy arrays
         """
         if isinstance(filename_or_ds, dict):
             self._ds_source = 'data'
@@ -37,6 +38,7 @@ class Dataset(object):
         self._pad_data = pad_data
         self._seed = seed
         self._with_all = with_all
+        self._force_cpu = force_cpu
 
         if split_function is not None:
             self._split_function = split_function
@@ -91,14 +93,15 @@ class Dataset(object):
         idx_tst = np.asarray(idx_tst, dtype=int)
 
         # partitions
-        self.trn = self.Paratition(ds, idx_trn, self._minibatch_size, self._pad_data)
+        self.trn = self.Paratition(ds, idx_trn, self._minibatch_size, self._pad_data, self._force_cpu)
         """Training set partition"""
-        self.val = self.Paratition(ds, idx_val, self._minibatch_size, self._pad_data)
+        self.val = self.Paratition(ds, idx_val, self._minibatch_size, self._pad_data, self._force_cpu)
         """Validation set partition"""
-        self.tst = self.Paratition(ds, idx_tst, self._minibatch_size, self._pad_data)
+        self.tst = self.Paratition(ds, idx_tst, self._minibatch_size, self._pad_data, self._force_cpu)
         """Test set partition"""
         if self._with_all:
-            self.all = self.Paratition(ds, np.arange(self.n_samples), self._minibatch_size, self._pad_data)
+            self.all = self.Paratition(ds, np.arange(self.n_samples), self._minibatch_size, self._pad_data,
+                                       self._force_cpu)
             """All data"""
         else:
             self.all = None
@@ -120,7 +123,7 @@ class Dataset(object):
     class Paratition(object):
         """A dataset partition (train / validation / test).
         Records from the dataset .npz file are exposed as members."""
-        def __init__(self, ds, idx, minibatch_size, pad_data):
+        def __init__(self, ds, idx, minibatch_size, pad_data, force_cpu):
             self._keys = ds.keys()
             self._minibatch_size = minibatch_size
             self.n_samples = len(idx)
@@ -131,7 +134,9 @@ class Dataset(object):
                 if pad_data:
                     data = self._pad(data, minibatch_size)
                 self.n_bytes += data.nbytes
-                setattr(self, key, post(data))
+                if not force_cpu:
+                    data = post(data)
+                setattr(self, key, data)
 
         def _pad(self, data, multiple):
             n_smpls = data.shape[-1]
