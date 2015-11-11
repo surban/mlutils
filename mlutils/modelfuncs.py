@@ -40,7 +40,6 @@ class ModelFuncs(object):
                 constants[varname] = post(value)
         self.ps.constants = constants
 
-
     @property
     def minibatch(self):
         return self._minibatch
