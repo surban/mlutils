@@ -167,7 +167,7 @@ class Dataset(object):
         def n_minibatches(self):
             """Number of minibatches"""
             if self._minibatch_size is not None:
-                return int(ceil(self.n_samples / self._minibatch_size))
+                return int(ceil(self.n_samples / float(self._minibatch_size)))
             else:
                 return 1
 
