@@ -34,7 +34,7 @@ function Perform-Substitutions($value, $basedir, $cfgdir)
 {
     $value = $value.Replace('$BASEDIR$', $basedir)
     $value = $value.Replace('$CFGDIR$', $cfgdir)
-    $scriptdir = ToUNCPath (Join-Path (Join-Path $PSScriptRoot ..) Scripts)
+    $scriptdir = ToUNCPath $PSScriptRoot
     $value = $value.Replace('$ONBESTDEVICE$', (Join-Path $scriptdir "OnBestDevice.cmd"))
     return $value
 }
