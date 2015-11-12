@@ -84,7 +84,7 @@ class ModelFuncs(object):
             else:
                 var = 0.01
         print "Randomly initializing parameters with variance %f" % var
-        self.ps.data[:] = post(np.random.normal(0, var, size=self.model.ps.data.shape))
+        self.ps.data[:] = post(np.random.normal(0, var, size=self.ps.data.shape))
 
         self.init_parameters_from_cfg()
         self.ps.restore_constants()

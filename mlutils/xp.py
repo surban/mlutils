@@ -67,6 +67,24 @@ def ones(shape):
     else:
         return np.ones(shape)
 
+def rand(shape):
+    if gpu.GPU:
+        return gp.rand(shape)
+    else:
+        return np.random.rand(shape)
+
+def randn(shape):
+    if gpu.GPU:
+        return gp.randn(shape)
+    else:
+        return np.random.randn(shape)
+
+def seed(val):
+    if gpu.GPU:
+        gp.seed_rand(val)
+    else:
+        np.random.seed(val)
+
 def copy(x):
     check_type(x)
     if is_np(x):
