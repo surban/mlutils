@@ -7,6 +7,8 @@ import time
 import theano
 import gc
 import ctypes
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 
 if sys.platform == 'nt':
     import msvcrt
@@ -53,6 +55,11 @@ def random_matrix_with_spectral_radius(size, std=1, bound=1.2):
     mat = np.random.normal(0, std, size=(size, size))
     bound_spectral_radius(mat, bound=bound)
     return mat
+
+def multifig(height_ratios=[1], figsize=(15, 15)):
+    plt.figure(figsize=figsize)
+    return GridSpec(len(height_ratios), 1, height_ratios=height_ratios)
+
 
 ############################################################################
 # Utility functions operating on arrays/lists
@@ -141,6 +148,9 @@ def combine_sample_steps(n_steps, data):
     :param data: data[..., step, smpl] - data to combine
     :return: combined[..., smpl] - all valid steps from all samples concatenated
     """
+    n_steps = np.asarray(n_steps)
+    data = np.asarray(data)
+
     n_samples = n_steps.shape[0]
     assert data.shape[-1] == n_samples
 

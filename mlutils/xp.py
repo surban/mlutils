@@ -61,6 +61,13 @@ def zeros(shape):
     else:
         return np.zeros(shape)
 
+def zeros_like(x):
+    check_type(x)
+    if is_np(x):
+        return np.zeros_like(x)
+    else:
+        return gp.zeros(x.shape)
+
 def ones(shape):
     if gpu.GPU:
         return gp.ones(shape)

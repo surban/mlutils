@@ -70,6 +70,7 @@ class Dataset(object):
         return idx_trn, idx_val, idx_tst
 
     def _load(self):
+        # load or verify data
         if self._ds_source == 'file':
             ds = np.load(self._ds_filename)
         elif self._ds_source == 'data':
@@ -78,13 +79,20 @@ class Dataset(object):
                 if not (isinstance(key, basestring) and isinstance(value, np.ndarray)):
                     raise TypeError("passed dataset must consist of (string, ndarray)-pairs")
 
+        # do preprocessing
         if self._preprocessing_function:
             ds = self._preprocessing_function(dict(ds))
 
-        self.n_samples = ds[ds.keys()[0]].shape[-1]
-        for key in ds.keys():
-            if ds[key].shape[-1] != self.n_samples:
-                raise ValueError("dataset contains arrays with different number of samples (last dimension)")
+        # extract number of samples and metadata
+        self.n_samples = None
+        for key, val in ds.iteritems():
+            if key.startswith('meta_'):
+                setattr(self, key, val)
+            else:
+                if self.n_samples is None:
+                    self.n_samples = val.shape[-1]
+                elif val.shape[-1] != self.n_samples:
+                    raise ValueError("dataset contains arrays with different number of samples (last dimension)")
 
         # perform split
         idx_trn, idx_val, idx_tst = self._split_function(ds)
@@ -124,7 +132,7 @@ class Dataset(object):
         """A dataset partition (train / validation / test).
         Records from the dataset .npz file are exposed as members."""
         def __init__(self, ds, idx, minibatch_size, pad_data, force_cpu):
-            self._keys = ds.keys()
+            self._keys = [k for k in ds.keys() if not k.startswith('meta_')]
             self._minibatch_size = minibatch_size
             self.n_samples = len(idx)
             self.n_bytes = 0

@@ -6,12 +6,14 @@ from mlutils.misc import combine_sample_steps, divide_sample_steps
 def pca_white(data, n_components=None, return_axes=False):
     """
     Performs PCA whitening of the data.
+    For every component the mean over the samples is zero and the variance is one.
+    The covariance matrix of the components is diagonal.
+
     :param data: data[feature, smpl] - input data
     :param n_components: If specified, limits the number of principal components to keep.
-    :param return_axes: If True, this function additionaly returns the PCA variances and corresponding axes.
-    :return: whitened[feature, smpl] - PCA whitened data.
-             For every feature the mean over the samples is zero and the variance is one.
-             The covariance matrix is diagonal.
+    :param return_axes: If True, this function additionaly returns the PCA variances, corresponding axes and means.
+    :return: if return_axes=False: whitened[comp, smpl] - PCA whitened data.
+             if return_axes=True: (whitened[comp, smpl], variances[comp], axes[dim, comp], means[dim]).
     """
     data = np.asarray(data)
     n_samples = data.shape[1]
@@ -35,9 +37,34 @@ def pca_white(data, n_components=None, return_axes=False):
     whitened = np.dot(np.diag(np.sqrt(1.0 / variances)), pcaed)
 
     if return_axes:
-        return whitened, variances, axes
+        return whitened, variances, axes, means
     else:
         return whitened
+
+def pca_white_inverse(whitened, variances, axes, means):
+    """
+    Restores original data from PCA whitened data.
+    :param whitened: whitened[comp, smpl] - PCA whitened data.
+    :param variances: variances[comp] - variances of PCA components
+    :param axes: axes[dim, comp] - PCA axes
+    :param means: means[dim] - data means
+    :return: data[feature, smpl] - reconstructed data
+    """
+    whitened = np.asarray(whitened)
+    variances = np.asarray(variances)
+    axes = np.asarray(axes)
+    means = np.asarray(means)
+
+    # reverse unit variance
+    pcaed = np.dot(np.diag(np.sqrt(variances)), whitened)
+
+    # restore original coordinate system
+    centered = np.dot(axes, pcaed)
+
+    # restore mean
+    data = centered + means[:, np.newaxis]
+
+    return data
 
 
 def zca(data):
