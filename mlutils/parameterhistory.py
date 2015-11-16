@@ -313,6 +313,7 @@ class ParameterHistory(object):
         plt.figure()
         self.plot()
         plt.savefig(join(self.state_dir, "loss.pdf"))
+        plt.close()
 
         # change directory icon to indicate that task is finished
         if sys.platform == 'win32':
