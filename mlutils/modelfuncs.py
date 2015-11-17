@@ -233,29 +233,6 @@ class ModelFuncs(object):
             return self.ps.nullify_gradient_of_constants(g)
         grad_func = grad_without_const
 
-        # create optimizer
-        if isinstance(self.cfg.optimizer, dict):
-            def wrt_fprime_for_part(partition):
-                wrt_for_part = self.ps.num_partition(partition)
-                def fprime_for_part(pv_part):
-                    # we assume that the optimizer updates the ParameterSet inplace and
-                    # evaluates the gradient at the current values of the parameters
-                    start, stop = self.ps.extents_of_partition(partition)
-                    return grad_func(self.ps.num_data)[start : stop]
-                return wrt_for_part, fprime_for_part
-            opts_obj = optimizers_from_cfg(self.cfg, wrt_fprime_for_part, self.mb_loss)
-            opts = {part: iter(opt_obj) for part, opt_obj in opts_obj.iteritems()}
-            partioned_opt = True
-
-            opt_parts = set(opts.keys())
-            ps_parts = set(self.ps.partitions)
-            if opt_parts != ps_parts:
-                raise ValueError("optimizer config does not cover all ParameterSet partitions or vice versa: %s" %
-                                 repr(opt_parts ^ ps_parts))
-        else:
-            opt = iter(optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, grad_func))
-            partioned_opt = False
-
         # initialize or restore checkpoint, if available
         if not checkpoint:
             itr = 0
@@ -296,97 +273,139 @@ class ModelFuncs(object):
             print "Resetting termination criteria because %s is present" % second_chance_file
             reset_termination_criteria = True
             unlink(second_chance_file)
+        if self.cfg.continue_training:
+            print "Resetting termination criteria because --continue flag was specified"
+            reset_termination_criteria = True
         if reset_termination_criteria:
-            his.should_terminate = False
+            his.reset_best()
 
-        # do training
-        self.ps.restore_constants()
-        last_pars = xp.copy(self.ps.data)
-        while not his.should_terminate:
+        restart = True
+        while restart:
+            # create optimizer
+            if isinstance(self.cfg.optimizer, dict):
+                def wrt_fprime_for_part(partition):
+                    wrt_for_part = self.ps.num_partition(partition)
+                    def fprime_for_part(pv_part):
+                        # we assume that the optimizer updates the ParameterSet inplace and
+                        # evaluates the gradient at the current values of the parameters
+                        start, stop = self.ps.extents_of_partition(partition)
+                        return grad_func(self.ps.num_data)[start : stop]
+                    return wrt_for_part, fprime_for_part
+                opts_obj = optimizers_from_cfg(self.cfg, wrt_fprime_for_part, self.mb_loss)
+                opts = {part: iter(opt_obj) for part, opt_obj in opts_obj.iteritems()}
+                partioned_opt = True
 
-            # call optimizer(s)
-            if partioned_opt:
-                for part, opt in opts.iteritems():
-                    # print "optimizing %s" % part
+                opt_parts = set(opts.keys())
+                ps_parts = set(self.ps.partitions)
+                if opt_parts != ps_parts:
+                    raise ValueError("optimizer config does not cover all ParameterSet partitions or vice versa: %s" %
+                                     repr(opt_parts ^ ps_parts))
+            else:
+                opt = iter(optimizer_from_cfg(self.cfg, self.ps.data, self.mb_loss, grad_func))
+                partioned_opt = False
+
+            # do training
+            self.ps.restore_constants()
+            last_pars = xp.copy(self.ps.data)
+            while not his.should_terminate:
+                # call optimizer(s)
+                if partioned_opt:
+                    for part, opt in opts.iteritems():
+                        # print "optimizing %s" % part
+                        opt.next()
+                else:
                     opt.next()
+
+                # element change cap
+                if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
+                    d = self.ps.data - last_pars
+                    for par, lim in self.cfg.step_element_cap.iteritems():
+                        start, stop = self.ps.extents_of_var(par)
+                        dpar = d[start:stop]
+                        # print "parameter diff for %s is %s (limit is %.4f)" % (par, repr(dpar), lim)
+                        elems = xp.where(xp.abs(dpar) > lim)
+                        dpar[elems] = xp.sign(dpar[elems]) * lim
+                    self.ps.data[:] = last_pars + d
+                    last_pars = xp.copy(self.ps.data)
+
+                # parameter printout
+                if print_parameters:
+                    pars = gather(self.ps.data)
+                    pars_var = self.ps.split(pars)
+                    print "parameters at iteration %d:" % itr
+                    for name, value in pars_var.iteritems():
+                        print "%10s: %s" % (name, repr(list(value)))
+
+                # obtain gradient if required for debugging operations
+                if large_gradient_threshold > 0 or print_gradient_info or print_gradient:
+                    gradient = gather(grad_func(self.ps.num_data))
+                else:
+                    gradient = None
+
+                # check gradient for large elements
+                if large_gradient_threshold > 0:
+                    lgv = self.ps.find_large_elements(gradient, threshold=large_gradient_threshold)
+                    if len(lgv) > 0:
+                        print "parameters with large gradient: "
+                        for (var, idx), value in lgv.itervalues():
+                            print "                                %s[%d] = %.3f" % (var, idx, value)
+
+                # gradient magnitude printout
+                if print_gradient_info:
+                    gradient_magnitude = np.sqrt(np.sum(gradient ** 2))
+                    print "|gradient| = %.3f" % gradient_magnitude
+
+                # gradient printout
+                if print_gradient:
+                    gradient_var = self.ps.split(gradient)
+                    print "gradient at iteration %d:" % itr
+                    for name, value in gradient_var.iteritems():
+                        print "%10s: %s" % (name, repr(list(value)))
+
+                # check gradient for NaNs and Infs
+                if check_gradient_finite or gradient is not None:
+                    if not np.all(np.isfinite(gradient)):
+                        his.should_terminate = True
+                        his.termination_reason = 'inf_or_nan_gradient'
+                        break
+
+                if self.next_minibatch():
+                    # iteration finished
+                    self.after_iteration(his, itr)
+
+                    itr += 1
+
+                    # log parameters
+                    logger.log(itr, self.ps)
+
+                    # calculate losses
+                    if itr % loss_record_interval == 0:
+                        self.record_loss(his, itr)
+
+                # save checkpoint if necessary
+                if checkpoint_handler is not None:
+                    if checkpoint_handler.requested:
+                        his.stop()
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger)
+                    if his.should_save_checkpoint:
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger,
+                                                explicit=True)
+                        his.checkpoint_saved()
+
+            # restore best parametes
+            self.ps.data[:] = his.best_pars
+
+            # advance learning rate schedule
+            if (his.termination_reason in ['no_improvement', 'nan_or_inf_loss'] and
+                    'optimizer_step_rate_min' in dir(self.cfg) and
+                    self.cfg.optimizer_step_rate / 10. >= self.cfg.optimizer_step_rate_min):
+                self.cfg.optimizer_step_rate /= 10.
+                print "Decaying optimizer step rate to %g" % self.cfg.optimizer_step_rate
+                his.should_terminate = False
+                his.last_val_improvement = itr
+                restart = True
             else:
-                opt.next()
-
-            # element change cap
-            if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
-                d = self.ps.data - last_pars
-                for par, lim in self.cfg.step_element_cap.iteritems():
-                    start, stop = self.ps.extents_of_var(par)
-                    dpar = d[start:stop]
-                    # print "parameter diff for %s is %s (limit is %.4f)" % (par, repr(dpar), lim)
-                    elems = xp.where(xp.abs(dpar) > lim)
-                    dpar[elems] = xp.sign(dpar[elems]) * lim
-                self.ps.data[:] = last_pars + d
-                last_pars = xp.copy(self.ps.data)
-
-            # parameter printout
-            if print_parameters:
-                pars = gather(self.ps.data)
-                pars_var = self.ps.split(pars)
-                print "parameters at iteration %d:" % itr
-                for name, value in pars_var.iteritems():
-                    print "%10s: %s" % (name, repr(list(value)))
-
-            # obtain gradient if required for debugging operations
-            if large_gradient_threshold > 0 or print_gradient_info or print_gradient:
-                gradient = gather(grad_func(self.ps.num_data))
-            else:
-                gradient = None
-
-            # check gradient for large elements
-            if large_gradient_threshold > 0:
-                lgv = self.ps.find_large_elements(gradient, threshold=large_gradient_threshold)
-                if len(lgv) > 0:
-                    print "parameters with large gradient: "
-                    for (var, idx), value in lgv.itervalues():
-                        print "                                %s[%d] = %.3f" % (var, idx, value)
-
-            # gradient magnitude printout
-            if print_gradient_info:
-                gradient_magnitude = np.sqrt(np.sum(gradient ** 2))
-                print "|gradient| = %.3f" % gradient_magnitude
-
-            # gradient printout
-            if print_gradient:
-                gradient_var = self.ps.split(gradient)
-                print "gradient at iteration %d:" % itr
-                for name, value in gradient_var.iteritems():
-                    print "%10s: %s" % (name, repr(list(value)))
-
-            # check gradient for NaNs and Infs
-            if check_gradient_finite or gradient is not None:
-                if not np.all(np.isfinite(gradient)):
-                    his.should_terminate = True
-                    his.termination_reason = 'inf_or_nan_gradient'
-                    break
-
-            if self.next_minibatch():
-                # iteration finished
-                self.after_iteration(his, itr)
-
-                itr += 1
-
-                # log parameters
-                logger.log(itr, self.ps)
-
-                # calculate losses
-                if itr % loss_record_interval == 0:
-                    self.record_loss(his, itr)
-
-            # save checkpoint if necessary
-            if checkpoint_handler is not None:
-                if checkpoint_handler.requested:
-                    his.stop()
-                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger)
-                if his.should_save_checkpoint:
-                    checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger,
-                                            explicit=True)
-                    his.checkpoint_saved()
+                restart = False
 
         # training finished
         self.after_training(his)

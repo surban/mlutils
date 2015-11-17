@@ -58,6 +58,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
               if with_checkpoint == False: (cfg module, cfg directory)
     """
     outdir = None
+    force_continue = False
 
     # gather information
     print "Host: %s" % gethostname()
@@ -75,6 +76,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         parser.add_argument('--out-dir', help="output directory (by default config directory is used)")
         if with_checkpoint:
             parser.add_argument('--restart', action='store_true', help="inhibits loading of an available checkpoint")
+            parser.add_argument('--continue', action='store_true', dest='cont', help="resets the termination criteria")
 
         args = parser.parse_args()
         config_name = args.cfg
@@ -82,6 +84,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
             outdir = args.out_dir
         if with_checkpoint:
             force_restart = args.restart
+            force_continue = args.cont
 
     # determine path to configuration file
     if isfile(config_name):
@@ -125,6 +128,9 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     for k, v in defaults.iteritems():
         if k not in dir(cfg):
             setattr(cfg, k, v)
+
+    # set continue flag
+    setattr(cfg, 'continue_training', force_continue)
 
     # clean configuration directory
     if clean_outputs and checkpoint is None:
