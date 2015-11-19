@@ -329,6 +329,13 @@ function Get-HpcTaskResults
                 continue 
             }
             if ($json.cfg) { $res = $json.cfg } else { $res = New-Object -TypeName PSObject }
+            if ($json.data) 
+            {
+                foreach ($p in $json.data.PSObject.Properties)
+                {
+                    $res | Add-Member $p.Name $p.Value
+                }
+            }
             $res | Add-Member Id (Split-Path $dir -Leaf)
             if ($json.best_iter)  { $res | Add-Member Iters $json.best_iter }
             if ($json.training_time) { $res | Add-Member Duration (New-TimeSpan -Seconds $json.training_time) }

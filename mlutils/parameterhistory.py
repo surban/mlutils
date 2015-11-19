@@ -243,8 +243,8 @@ class ParameterHistory(object):
                 'start_time': self.start_time,
                 'end_time': self.end_time,
                 'termination_reason': self.termination_reason,
-                'cfg': self.cfg}
-        data.update(self.data)
+                'cfg': self.cfg,
+                'data': self.data}
         with open(results_filename, 'wb') as results_file:
             json.dump(data, results_file, indent=4)
 

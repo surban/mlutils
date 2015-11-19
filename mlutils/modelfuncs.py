@@ -251,6 +251,8 @@ class ModelFuncs(object):
         else:
             itr = checkpoint['iter']
             self.ps.data[:] = post(checkpoint['data'])
+            if 'optimizer_step_rate' in checkpoint:
+                self.cfg.optimizer_step_rate = checkpoint['optimizer_step_rate']
 
             his = checkpoint['his']
             his.state_dir = cfg_dir
@@ -386,9 +388,11 @@ class ModelFuncs(object):
                 if checkpoint_handler is not None:
                     if checkpoint_handler.requested:
                         his.stop()
-                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger)
+                        checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger,
+                                                optimizer_step_rate=self.cfg.optimizer_step_rate)
                     if his.should_save_checkpoint:
                         checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger,
+                                                optimizer_step_rate=self.cfg.optimizer_step_rate,
                                                 explicit=True)
                         his.checkpoint_saved()
 
@@ -413,7 +417,9 @@ class ModelFuncs(object):
         # save results and plot loss
         if checkpoint_handler:
             his.stop()
-            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger, explicit=True)
+            checkpoint_handler.save(data=gather(self.ps.data), his=his, iter=itr, logger=logger,
+                                    optimizer_step_rate=self.cfg.optimizer_step_rate,
+                                    explicit=True)
         his.finish()
         logger.plot()
 
@@ -434,3 +440,4 @@ class ModelFuncs(object):
         :param his: used training history
         """
         pass
+        
