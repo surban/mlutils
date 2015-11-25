@@ -71,7 +71,10 @@ class ModelFuncs(object):
         """The parameterset of the model.
         :type: mlutils.parameterset.ParameterSet
         """
-        return self.model.ps
+        if self.model is not None:
+            return self.model.ps
+        else:
+            return self._ps
 
     def init_parameters(self, var=None, seed=None):
         """Initializes the parameteres of the ParameterSet using a zero-mean normal distribution.
@@ -298,6 +301,10 @@ class ModelFuncs(object):
         if reset_termination_criteria:
             his.reset_best()
 
+        if 'step_element_cap' in dir(self.cfg):
+            step_element_cap_orig = self.cfg.step_element_cap
+        step_element_cap_decrease_iteration = None
+
         restart = True
         while restart and (self.cfg.max_iters is None or self.cfg.max_iters > 0):
             # create optimizer
@@ -408,6 +415,16 @@ class ModelFuncs(object):
                     if itr % loss_record_interval == 0:
                         self.record_loss(his, itr)
 
+                    if step_element_cap_decrease_iteration is not None:
+                        if 'step_element_cap_restore_iterations' in dir(self.cfg):
+                            restore_itrs = self.cfg.step_element_cap_restore_iterations
+                        else:
+                            restore_itrs = 100
+                        if itr >= step_element_cap_decrease_iteration + restore_itrs:
+                            self.cfg.step_element_cap = step_element_cap_orig
+                            print "Restored step element cap to %g" % self.cfg.step_element_cap
+                            step_element_cap_decrease_iteration = None
+
                 # save checkpoint if necessary
                 if checkpoint_handler is not None:
                     if checkpoint_handler.requested:
@@ -423,6 +440,19 @@ class ModelFuncs(object):
             # restore best parametes
             self.ps.data[:] = his.best_pars
 
+            # check for retry conditions
+            restart = False
+
+            # temporarily reduce step element cap to move over regions with very large gradient
+            if (his.should_terminate and his.termination_reason == 'nan_or_inf_loss' and
+                    'step_element_cap' in dir(self.cfg) and 'step_element_cap_min' in dir(self.cfg) and
+                    self.cfg.step_element_cap >= self.cfg.step_element_cap_min):
+                self.cfg.step_element_cap /= 10.
+                step_element_cap_decrease_iteration = itr
+                print "Reduced step element cap to %g" % self.cfg.step_element_cap
+                his.should_terminate = False
+                restart = True
+
             # advance learning rate schedule
             if (his.termination_reason in ['no_improvement', 'nan_or_inf_loss'] and
                     'optimizer_step_rate_min' in dir(self.cfg) and
@@ -432,8 +462,6 @@ class ModelFuncs(object):
                 his.should_terminate = False
                 his.last_val_improvement = itr
                 restart = True
-            else:
-                restart = False
 
         # training finished
         self.after_training(his)
