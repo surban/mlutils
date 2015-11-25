@@ -3,7 +3,7 @@ import numpy as np
 from mlutils.misc import combine_sample_steps, divide_sample_steps
 
 
-def pca_white(data, n_components=None, return_axes=False):
+def pca_white(data, n_components=None, return_axes=False, variances=None, axes=None, means=None):
     """
     Performs PCA whitening of the data.
     For every component the mean over the samples is zero and the variance is one.
@@ -12,6 +12,9 @@ def pca_white(data, n_components=None, return_axes=False):
     :param data: data[feature, smpl] - input data
     :param n_components: If specified, limits the number of principal components to keep.
     :param return_axes: If True, this function additionaly returns the PCA variances, corresponding axes and means.
+    :param variances: If specified, use these variances instead of computing them from the data.
+    :param axes: If specified, use theses axes instead of computing them from the data.
+    :param means: If specified, use these means instead of computing them from the data.
     :return: if return_axes=False: whitened[comp, smpl] - PCA whitened data.
              if return_axes=True: (whitened[comp, smpl], variances[comp], axes[dim, comp], means[dim]).
     """
@@ -19,18 +22,22 @@ def pca_white(data, n_components=None, return_axes=False):
     n_samples = data.shape[1]
 
     # center data on mean
-    means = np.mean(data, axis=1)
+    if means is None:
+        means = np.mean(data, axis=1)       
     centered = data - means[:, np.newaxis]
 
-    # calculate principal axes and transform data into that coordinate system
-    cov = np.dot(centered, centered.T) / n_samples
-    variances, axes = np.linalg.eigh(cov)
-    sort_idx = np.argsort(variances)[::-1]
-    variances = variances[sort_idx]
-    axes = axes[:, sort_idx]
-    if n_components is not None:
-        variances = variances[0:n_components]
-        axes = axes[:, 0:n_components]
+    # calculate principal axes and their variances
+    if axes is None or variances is None:
+        cov = np.dot(centered, centered.T) / n_samples
+        variances, axes = np.linalg.eigh(cov)
+        sort_idx = np.argsort(variances)[::-1]
+        variances = variances[sort_idx]
+        axes = axes[:, sort_idx]
+        if n_components is not None:
+            variances = variances[0:n_components]
+            axes = axes[:, 0:n_components]
+            
+    # transform data into that coordinate system
     pcaed = np.dot(axes.T, centered)
 
     # scale axes so that each has unit variance

@@ -36,12 +36,16 @@ def base_dir():
             raise RuntimeError("Cannot find base directory (contains a 'cfgs' subdirectory)")
     return p
 
-
 def cfgs_dir():
     """Finds the path to the configuration directory.
     :returns: path to the configuration directory"""
     return os.path.join(base_dir(), "cfgs")
 
+_cfg_dir = None
+def cfg_dir():
+    """Finds the directory of the currently parsed configuration file.
+    :returns: path to directory of current cfg.py"""
+    return _cfg_dir
 
 def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=False, defaults={}, force_restart=False):
     """Reads the configuration file cfg.py from the configuration directory
@@ -57,6 +61,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     :returns: if with_checkpoint == True:  (cfg module, cfg directory, checkpoint handler, checkpoint)
               if with_checkpoint == False: (cfg module, cfg directory)
     """
+    global _cfg_dir
     outdir = None
     force_continue = False
 
@@ -105,6 +110,7 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         raise RuntimeError("Config: %s not found" % cfgname)
     print "Config: %s" % cfgname
     sys.dont_write_bytecode = True
+    _cfg_dir = cfgdir
     cfg = imp.load_source('cfg', cfgname)
 
     # prepare output directory
@@ -129,7 +135,8 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
         if k not in dir(cfg):
             setattr(cfg, k, v)
 
-    # set continue flag
+    # set additional information
+    setattr(cfg, 'out_dir', outdir)
     setattr(cfg, 'continue_training', force_continue)
 
     # clean configuration directory
