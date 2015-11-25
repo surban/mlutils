@@ -338,12 +338,19 @@ class ModelFuncs(object):
                 # element change cap
                 if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
                     d = self.ps.data - last_pars
-                    for par, lim in self.cfg.step_element_cap.iteritems():
-                        start, stop = self.ps.extents_of_var(par)
-                        dpar = d[start:stop]
-                        # print "parameter diff for %s is %s (limit is %.4f)" % (par, repr(dpar), lim)
-                        elems = xp.where(xp.abs(dpar) > lim)
-                        dpar[elems] = xp.sign(dpar[elems]) * lim
+                    if isinstance(self.cfg.step_element_cap, dict):
+                        for par, lim in self.cfg.step_element_cap.iteritems():
+                            start, stop = self.ps.extents_of_var(par)
+                            dpar = d[start:stop]    # dpar is a subview of d
+                            # print "parameter diff for %s is %s (limit is %.4f)" % (par, repr(dpar), lim)
+                            elems = xp.where(xp.abs(dpar) > lim)
+                            dpar[elems] = xp.sign(dpar[elems]) * lim
+                    elif isinstance(self.cfg.step_element_cap, (float, int)):
+                        lim = float(self.cfg.step_element_cap)
+                        elems = xp.where(xp.abs(d) > lim)
+                        d[elems] = xp.sign(d[elems]) * lim
+                    else:
+                        raise TypeError("cfg.step_element_cap must either be a dict or a float")
                     self.ps.data[:] = last_pars + d
                     last_pars = xp.copy(self.ps.data)
 

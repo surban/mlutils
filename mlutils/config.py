@@ -239,13 +239,26 @@ class CheckpointHandler(object):
             # install unix signal handlers
             signal.signal(signal.SIGINT, self._signal_handler)
             signal.signal(signal.SIGBREAK, self._signal_handler)
+        self._handler_installed = True
 
     def _signal_handler(self, signum, frame):
         print "Checkpoint: requested by termination signal"
         self._requested = True
 
+    def release(self):
+        if not self._handler_installed:
+            return
+        if sys.platform == 'win32':
+            # WORKAROUND: Removing the handler causes and exception, thus we just leave it installed.
+            #             But since self._handler_installed is set to False, the handler will chain to the OS handler.
+            pass
+        else:
+            signal.signal(signal.SIGINT, None)
+            signal.signal(signal.SIGBREAK, None)
+        self._handler_installed = False
+
     def _console_ctrl_handler(self, ctrl_type):
-        if ctrl_type in [0, 1]:  # Ctrl-C or Ctrl-Break
+        if self._handler_installed and ctrl_type in [0, 1]:  # Ctrl-C or Ctrl-Break
             print "Checkpoint: requested by termination signal"
             self._requested = True
             return 1  # don't chain to the next handler
