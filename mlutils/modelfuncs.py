@@ -73,17 +73,24 @@ class ModelFuncs(object):
         """
         return self.model.ps
 
-    def init_parameters(self, var=None):
+    def init_parameters(self, var=None, seed=None):
         """Initializes the parameteres of the ParameterSet using a zero-mean normal distribution.
         :param var: Variance of the normal distribution.
                     If None, then the 'initialization_variance' parameter from the configuration is used.
+        :param seed: random seed for initialization
         """
         if var is None:
             if 'initialization_variance' in dir(self.cfg):
                 var = self.cfg.initialization_variance
             else:
                 var = 0.01
-        print "Randomly initializing parameters with variance %f" % var
+        if seed is None:
+            if 'initialization_seed' in dir(self.cfg):
+                seed = self.cfg.initialization_seed
+            else:
+                seed = 1
+        print "Randomly initializing parameters with variance %f and seed %d" % (var, seed)
+        np.random.seed(seed)
         self.ps.data[:] = post(np.random.normal(0, var, size=self.ps.data.shape))
 
         self.init_parameters_from_cfg()
@@ -103,6 +110,14 @@ class ModelFuncs(object):
                     self.ps[varname] = value
                 else:
                     self.ps[varname] = post(value)
+
+        prefix = 'initvar_'
+        for name in dir(self.cfg):
+            if name.startswith(prefix):
+                varname = name[len(prefix):]
+                variance = getattr(self.cfg, name)
+                print "Random parameter initialization: %015s ~ N(0, %.3f)" % (varname, variance)
+                self.ps[varname] = post(np.random.normal(0, variance, size=self.ps[varname].shape))
 
     def load_parameters(self, filename):
         """Loads the parameters of the ParameterSet of the model from the given file."""
@@ -172,8 +187,8 @@ class ModelFuncs(object):
         return history.should_terminate
 
     def generic_training(self, cfg_dir, checkpoint=None, checkpoint_handler=None, loss_record_interval=10,
-                         max_missed_val_improvements=200, iteration_gain=1.25, reset_termination_criteria=False,
-                         desired_loss=None, initialize=True,
+                         max_missed_val_improvements=200, iteration_gain=1.25, min_improvement=1e-7,
+                         reset_termination_criteria=False, desired_loss=None, initialize=True,
                          large_gradient_threshold=0.0, print_gradient_info=False, print_gradient=False,
                          print_parameters=False, log_parameters=[], plot_logged_parameters=True,
                          print_logged_parameters=False, check_gradient_finite=False):
@@ -186,6 +201,7 @@ class ModelFuncs(object):
         :param max_missed_val_improvements: maximum iterations without improvement of loss before training ist stopped
         :param iteration_gain: If not set to 0, then training is performed up to iteration
                                (iteration_gain * iteration_of_last_improvement).
+        :param min_improvement: minimum loss change to count as improvement
         :param reset_termination_criteria: resets the termination criteria after loading a checkpoint
         :param desired_loss: if specified, training is terminated with this loss is reached
         :param initialize: if True, the model parameters are initialized using the init_parameters method.
@@ -241,6 +257,7 @@ class ModelFuncs(object):
 
             his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters,
                                    max_missed_val_improvements=max_missed_val_improvements,
+                                   min_improvement=min_improvement,
                                    desired_loss=desired_loss, iteration_gain=iteration_gain)
             logger = ParameterLogger(out_dir=cfg_dir, parameters=log_parameters,
                                      plot=plot_logged_parameters, print_stdout=print_logged_parameters)
@@ -282,7 +299,7 @@ class ModelFuncs(object):
             his.reset_best()
 
         restart = True
-        while restart:
+        while restart and (self.cfg.max_iters is None or self.cfg.max_iters > 0):
             # create optimizer
             if isinstance(self.cfg.optimizer, dict):
                 def wrt_fprime_for_part(partition):
