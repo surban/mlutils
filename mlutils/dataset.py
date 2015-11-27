@@ -63,10 +63,22 @@ class Dataset(object):
         return splits
 
     def _default_splits(self, ds):
-        old_rng = np.random.get_state()
-        np.random.seed(self._seed)
-        idx_trn, idx_val, idx_tst = self._splits(self.n_samples, self._fractions)
-        np.random.set_state(old_rng)
+        if 'meta_splits' in ds:
+            splits = np.asarray(ds['meta_splits'], dtype=int)
+            if not (np.all(0 <= splits) and np.all(splits <= self.n_samples)):
+                raise ValueError("meta_splits out of sample range")
+            if not splits[0] <= splits[1]:
+                raise ValueError("meta_splits[0] must be smaller or equal to meta_splits[1]")
+
+            idx_trn = np.arange(0, splits[0])
+            idx_val = np.arange(splits[0], splits[1])
+            idx_tst = np.arange(splits[1], self.n_samples)
+            print "Using dataset defined training/validation/test sample splits."
+        else:
+            old_rng = np.random.get_state()
+            np.random.seed(self._seed)
+            idx_trn, idx_val, idx_tst = self._splits(self.n_samples, self._fractions)
+            np.random.set_state(old_rng)
         return idx_trn, idx_val, idx_tst
 
     def _load(self):

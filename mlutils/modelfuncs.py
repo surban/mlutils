@@ -220,6 +220,8 @@ class ModelFuncs(object):
         :return: ParameterHistory object of training
         """
 
+        max_iters = self.cfg.max_iters if 'max_iters' in dir(self.cfg) else None
+
         # build gradient preprocessing chain
         grad_func = self.mb_loss_grad
 
@@ -258,7 +260,7 @@ class ModelFuncs(object):
             if initialize:
                 self.init_parameters()
 
-            his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=self.cfg.max_iters,
+            his = ParameterHistory(cfg=self.cfg, state_dir=cfg_dir, max_iters=max_iters,
                                    max_missed_val_improvements=max_missed_val_improvements,
                                    min_improvement=min_improvement,
                                    desired_loss=desired_loss, iteration_gain=iteration_gain)
@@ -306,7 +308,7 @@ class ModelFuncs(object):
         step_element_cap_decrease_iteration = None
 
         restart = True
-        while restart and (self.cfg.max_iters is None or self.cfg.max_iters > 0):
+        while restart and (max_iters is None or max_iters > 0):
             # create optimizer
             if isinstance(self.cfg.optimizer, dict):
                 def wrt_fprime_for_part(partition):
@@ -454,7 +456,7 @@ class ModelFuncs(object):
                 restart = True
 
             # advance learning rate schedule
-            if (his.termination_reason in ['no_improvement', 'nan_or_inf_loss'] and
+            if (his.should_terminate and his.termination_reason in ['no_improvement', 'nan_or_inf_loss'] and
                     'optimizer_step_rate_min' in dir(self.cfg) and
                     self.cfg.optimizer_step_rate / 10. >= self.cfg.optimizer_step_rate_min):
                 self.cfg.optimizer_step_rate /= 10.
