@@ -116,3 +116,18 @@ def for_step_data(func):
     return sd_func
 
 
+def scale(data, min=0.0, max=1.0):
+    """
+    :param data: data[feature, smpl] - input data
+    :param min: minimum value of the scaled data for each feature
+    :param max: maximum value of the scaled data for each feature
+    :return: data with each feature scaled to lie within [min, max]
+    """
+    # Compute max and min within each feature
+    maxs = np.max(data, axis=1)
+    mins = np.min(data, axis=1)
+    # Scale data to be between 0 and 1 (transpose needed to use numpys broad-
+    # casting for subtraction
+    data_s = (data - mins[:, np.newaxis])/(maxs - mins)[:, np.newaxis]
+    # Scale to given min and max
+    return (max - min) * data_s + min
