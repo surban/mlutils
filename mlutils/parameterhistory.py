@@ -134,7 +134,7 @@ class ParameterHistory(object):
         if self.max_iters is not None and iter >= self.max_iters:
             self.termination_reason = 'max_iters_reached'
             self.should_terminate = True
-        if not (np.isfinite(trn_loss) and np.isfinite(val_loss) and np.isfinite(tst_loss)):
+        if not (np.isfinite(trn_loss) and np.isfinite(val_loss)):
             self.termination_reason = 'nan_or_inf_loss'
             self.should_terminate = True
 
