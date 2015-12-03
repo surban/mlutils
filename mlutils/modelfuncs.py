@@ -18,13 +18,22 @@ class ModelFuncs(object):
         if dataset is not None:
             self.dataset = dataset
         else:
-            self.dataset = Dataset(self.cfg.dataset, minibatch_size=self.cfg.minibatch_size)
+            self.dataset = Dataset(self.cfg.dataset, minibatch_size=self.cfg.minibatch_size,
+                                   preprocessing_function=self.preprocess_dataset)
 
         self._minibatch_idx = 0
         self._minibatch = None
         self.minibatch_idx = 0
 
         self.set_constant_parameters_from_cfg()
+
+    def preprocess_dataset(self, ds):
+        """
+        Preprocesses the dataset.
+        :param ds: dataset
+        :return: preprocessed dataset
+        """
+        return ds
 
     def set_constant_parameters_from_cfg(self):
         """
@@ -494,4 +503,3 @@ class ModelFuncs(object):
         :param his: used training history
         """
         pass
-        
