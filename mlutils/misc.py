@@ -1,10 +1,9 @@
 import sys
-import os
 from climin.initialize import bound_spectral_radius
 import numpy as np
-import gnumpy as gp
 import time
 import theano
+import theano.tensor as T
 import gc
 import ctypes
 import matplotlib.pyplot as plt
@@ -187,6 +186,41 @@ def divide_sample_steps(n_steps, combined):
     assert pos == combined.shape[-1]
 
     return data
+
+############################################################################
+# Theano intermediate printing
+############################################################################
+
+
+def _print_fn(op, xin, only_notfinite, slc):
+    if only_notfinite:
+        pos = np.transpose(np.nonzero(~np.isfinite(xin)))
+        if pos.size > 0:
+            print "!!!!!! non-finite %s at index " % op.message,
+            for i in range(pos.shape[0]):
+                print str(tuple(pos[i, :])) + ", ",
+            print
+    else:
+        if slc is None:
+            print "%s = \n%s" % (op.message, str(xin))
+        else:
+            slc = tuple((slice(None) if p is None else p for p in slc))
+            print "%s[%s] = \n%s" % (op.message, str(slc), str(xin[slc]))
+
+
+def print_node(caption, val, only_notfinite=False, slice=None):
+    """
+    Prints the value of a Theano node during evaluation.
+    :param caption: name to display
+    :param val: input node
+    :param only_notfinite: if True, a list of non-finite indices is printed
+    :param slice: optional slice of value to print
+    :return: node with print side effect
+    """
+    return T.printing.Print(caption,
+                            global_fn=lambda op, xin: _print_fn(op, xin,
+                                                                only_notfinite=only_notfinite,
+                                                                slc=slice))(val)
 
 
 ############################################################################
