@@ -246,7 +246,7 @@ class ParameterSet(object):
         return self._part_layout[part]
 
     ###########################################################################
-    # variable localization within flat vector
+    # flat vector processing
     ###########################################################################
 
     def find_large_elements(self, data, threshold=1.0):
@@ -340,6 +340,10 @@ class ParameterSet(object):
     def __getattr__(self, item):
         """Symbolic variables are exposed as attributes."""
         return self.sym(item)
+
+    def all_vars(self):
+        """List of all variable names."""
+        return list(self._num_var_slices.keys())
 
     ###########################################################################
     # legacy interface
