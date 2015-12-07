@@ -1,6 +1,9 @@
 from math import sqrt, ceil
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import pyplot as plt
+
+from mlutils import gather
 
 
 def imshow_grid(data, ny=None, nx=None, cmap='gray_r', interpolation='none', aspect=1.3,
@@ -63,3 +66,58 @@ def imshow_grid(data, ny=None, nx=None, cmap='gray_r', interpolation='none', asp
 
     plt.xticks(ticks(nx))
     plt.yticks(ticks(ny))
+
+
+def plot_weight_histograms(ps, weights_to_plot, bins=10):
+    """
+    Plots histograms of the given weights.
+    :param ps: ParameterSet
+    :param weights_to_plot: list of weights to plot
+    """
+    for i, par in enumerate(weights_to_plot):
+        plt.subplot(len(weights_to_plot), 1, i)
+        plt.hist(gather(ps[par]).flat, bins=bins)
+        plt.xlabel(par)
+    plt.tight_layout()
+
+
+def plot_binary_sequence(seq, true_seq=None, gray=None):
+    """
+    Plots a binary sequence and optionally compares it with another sequence.
+    :param seq: seq[ch, step] - sequence to plot
+    :param true_seq: true_seq[ch, step] - sequence to compare with
+    :param gray: gray[step] - background is colored gray where gray > 0
+    """
+    n_channels = seq.shape[0]
+    n_steps = seq.shape[1]
+
+    if true_seq is not None:
+        # calculate note diff
+        diff = np.ones((n_channels, n_steps, 3))
+        for step in range(n_steps):
+            for ch in range(n_channels):
+                if seq[ch, step] == true_seq[ch, step]:
+                    if seq[ch, step] == 1:
+                        diff[ch, step, :] = 0           # black means matchs with note
+                    elif seq[ch, step] == 0:
+                        if gray is not None and gray[step] > 0:
+                            diff[ch, step, :] = 0.7
+                        else:
+                            diff[ch, step, :] = 1           # white means matchs with no note
+                    else:
+                        assert False
+                elif seq[ch, step] == 1:
+                    diff[ch, step, 0:2] = 0         # blue means new note
+                elif seq[ch, step] == 0:
+                    diff[ch, step, 1:] = 0          # red means note deleted
+                else:
+                    assert False
+
+        plt.imshow(diff, origin='lower', aspect='auto', interpolation='nearest',
+                   extent=(0, n_steps, 0, n_channels))
+    else:
+        plt.imshow(seq, origin='lower', aspect='auto', interpolation='nearest', cmap=plt.cm.gray_r,
+                   extent=(0, n_steps, 0, n_channels))
+
+    plt.xlabel('step')
+    plt.ylabel('channel')
