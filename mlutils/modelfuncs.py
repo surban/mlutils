@@ -18,7 +18,9 @@ class ModelFuncs(object):
         if dataset is not None:
             self.dataset = dataset
         else:
+            fractions = cfg.dataset_fractions if 'dataset_fractions' in dir(cfg) else [0.8, 0.1, 0.1]
             self.dataset = Dataset(self.cfg.dataset, minibatch_size=self.cfg.minibatch_size,
+                                   fractions=fractions,
                                    preprocessing_function=self.preprocess_dataset)
 
         self._minibatch_idx = 0
@@ -94,6 +96,8 @@ class ModelFuncs(object):
         if var is None:
             if 'initialization_variance' in dir(self.cfg):
                 var = self.cfg.initialization_variance
+            elif 'initvar' in dir(self.cfg):
+                var = self.cfg.initvar
             else:
                 var = 0.01
         if seed is None:
@@ -101,7 +105,7 @@ class ModelFuncs(object):
                 seed = self.cfg.initialization_seed
             else:
                 seed = 1
-        print "Randomly initializing parameters with variance %f and seed %d" % (var, seed)
+        print "Random parameter initialization: ALL ~ N(0, %.3f) with seed %d" % (var, seed)
         np.random.seed(seed)
         self.ps.data[:] = post(np.random.normal(0, var, size=self.ps.data.shape))
 
@@ -128,8 +132,10 @@ class ModelFuncs(object):
             if name.startswith(prefix):
                 varname = name[len(prefix):]
                 variance = getattr(self.cfg, name)
-                print "Random parameter initialization: %015s ~ N(0, %.3f)" % (varname, variance)
-                self.ps[varname] = post(np.random.normal(0, variance, size=self.ps[varname].shape))
+                meanname = 'initmean_' + varname
+                mean = getattr(self.cfg, meanname) if meanname in dir(self.cfg) else 0.0
+                print "Random parameter initialization: %015s ~ N(%.3f, %.3f)" % (varname, mean, variance)
+                self.ps[varname] = post(np.random.normal(mean, variance, size=self.ps[varname].shape))
 
     def load_parameters(self, filename):
         """Loads the parameters of the ParameterSet of the model from the given file."""

@@ -6,7 +6,7 @@ from types import ModuleType
 import matplotlib.pyplot as plt
 import numpy as np
 import gnumpy as gp
-from os.path import join, split, exists
+from os.path import join, split, exists, abspath
 import sys
 from mlutils.gpu import gather, post
 import progress
@@ -312,6 +312,7 @@ class ParameterHistory(object):
         # plot loss curve
         plt.figure()
         self.plot()
+        plt.title(abspath(self.state_dir))
         plt.savefig(join(self.state_dir, "loss.pdf"))
         plt.close()
 
