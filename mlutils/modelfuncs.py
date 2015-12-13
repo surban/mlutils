@@ -471,7 +471,8 @@ class ModelFuncs(object):
                 restart = True
 
             # advance learning rate schedule
-            if (his.should_terminate and his.termination_reason in ['no_improvement', 'nan_or_inf_loss'] and
+            if (his.should_terminate and
+                    his.termination_reason in ['no_improvement', 'nan_or_inf_loss', 'user_learning_rate_decrease'] and
                     'optimizer_step_rate_min' in dir(self.cfg) and
                     self.cfg.optimizer_step_rate / 10. >= self.cfg.optimizer_step_rate_min):
                 self.cfg.optimizer_step_rate /= 10.

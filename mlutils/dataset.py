@@ -69,16 +69,25 @@ class Dataset(object):
                 raise ValueError("meta_splits out of sample range")
             if not splits[0] <= splits[1]:
                 raise ValueError("meta_splits[0] must be smaller or equal to meta_splits[1]")
-
             idx_trn = np.arange(0, splits[0])
             idx_val = np.arange(splits[0], splits[1])
             idx_tst = np.arange(splits[1], self.n_samples)
-            print "Using dataset defined training/validation/test sample splits."
+            print "Using dataset defined training/validation/test partitions."
+        elif 'meta_idx_trn' in ds or 'meta_idx_val' in ds or 'meta_idx_tst' in ds:
+            if not ('meta_idx_trn' in ds and 'meta_idx_val' in ds and 'meta_idx_tst' in ds):
+                raise ValueError("meta_idx_trn, meta_idx_val, meta_idx_tst must be specified together")
+            idx_trn = np.asarray(ds['meta_idx_trn'])
+            idx_val = np.asarray(ds['meta_idx_val'])
+            idx_tst = np.asarray(ds['meta_idx_tst'])
+            print "Using dataset defined training/validation/test samples."
         else:
             old_rng = np.random.get_state()
             np.random.seed(self._seed)
             idx_trn, idx_val, idx_tst = self._splits(self.n_samples, self._fractions)
             np.random.set_state(old_rng)
+        if 'meta_use_training_as_validation' in ds and ds['meta_use_training_as_validation']:
+            print "Using training set as validation set."
+            idx_val = idx_trn
         return idx_trn, idx_val, idx_tst
 
     def _load(self):

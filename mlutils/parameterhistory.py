@@ -80,6 +80,15 @@ class ParameterHistory(object):
 
         self.reset_best()
 
+    def __getstate__(self):
+        mydict = self.__dict__.copy()
+        mydict['best_pars'] = gather(mydict['best_pars'])
+        return mydict
+
+    def __setstate__(self, state):
+        state['best_pars'] = post(state['best_pars'])
+        self.__dict__ = state
+
     def reset_best(self):
         """
         Resets the best iteration statistics.
@@ -165,16 +174,24 @@ class ParameterHistory(object):
                 pass
 
         # termination by user
-        if get_key() == "q":
+        key = get_key()
+        if key == "q":
             print
             print "Termination by user."
             self.termination_reason = 'user'
             self.should_terminate = True
+        elif key == "d":
+            print
+            print "Learning rate decrease by user."
+            self.termination_reason = 'user_learning_rate_decrease'
+            self.should_terminate = True
 
-    def plot(self, logscale=True):
+    def plot(self, logscale=True, with_validation=True, xlim=None, ylim=None):
         """
         Plots the loss history.
         :param logscale: if True, logarithmic scale is used
+        :param with_validation: if True, validation set loss is plotted
+        :param ylim: limits of the y-axis
         """
         if 'figsize' in dir(plt):
             plt.figsize(10, 5)
@@ -184,18 +201,26 @@ class ParameterHistory(object):
                 plt.yscale('log')
                 # plt.xscale('log')
             plt.plot(self.history[0], self.history[1], 'b')
-            plt.plot(self.history[0], self.history[2], 'c')
+            if with_validation:
+                plt.plot(self.history[0], self.history[2], 'c')
             plt.plot(self.history[0], self.history[3], 'r')
         except ValueError:
             # catches: ValueError: Data has no positive values, and therefore can not be log-scaled.
             # when no data is present or we only have NaNs
             pass
+        if xlim is not None:
+            plt.xlim(xlim)
+        if ylim is not None:
+            plt.ylim(ylim)
         yl = plt.ylim()
-        if self.best_iter is not None:
+        if with_validation and self.best_iter is not None:
             plt.vlines(self.best_iter, yl[0], yl[1])
         plt.xlabel('iteration')
         plt.ylabel('loss')
-        plt.legend(['training', 'validation', 'test'])
+        if with_validation:
+            plt.legend(['training', 'validation', 'test'])
+        else:
+            plt.legend(['training', 'test'])
 
     @property
     def performed_iterations(self):
