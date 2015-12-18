@@ -21,6 +21,13 @@ def multiglob(*patterns):
         glob.glob(pattern) for pattern in patterns)
 
 
+def base_dir_of(p):
+    while not os.path.isdir(os.path.join(p, "cfgs")):
+        p = os.path.join(p, "..")
+        if len(p) > 500:
+            raise RuntimeError("Cannot find base directory (contains a 'cfgs' subdirectory)")
+    return p
+
 def base_dir():
     """Finds the path to the base directory of the main module.
      The base directory is the first parent directory of the main module or,
@@ -30,11 +37,14 @@ def base_dir():
         p = os.path.dirname(main.__file__)
     except AttributeError:
         p = ""
-    while not os.path.isdir(os.path.join(p, "cfgs")):
-        p = os.path.join(p, "..")
-        if len(p) > 500:
-            raise RuntimeError("Cannot find base directory (contains a 'cfgs' subdirectory)")
-    return p
+    return base_dir_of(p)
+
+def cfg_base_dir():
+    """
+    Finds the path to the base directory of the currently parsed configuration file.
+    :return:
+    """
+    return base_dir_of(cfg_dir())
 
 def cfgs_dir():
     """Finds the path to the configuration directory.

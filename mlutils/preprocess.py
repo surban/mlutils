@@ -131,3 +131,13 @@ def scale(data, min=0.0, max=1.0):
     data_s = (data - mins[:, np.newaxis])/(maxs - mins)[:, np.newaxis]
     # Scale to given min and max
     return (max - min) * data_s + min
+
+
+def downsample(data, factor):
+    """
+    Downsamples data by skipping over samples.
+    :param data: data[..., smpl]
+    :param factor: samples to skip over
+    :return: data[..., smpl]
+    """
+    return data[..., np.arange(0, data.shape[-1], factor)]

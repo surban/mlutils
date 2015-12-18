@@ -19,7 +19,11 @@ class ModelFuncs(object):
             self.dataset = dataset
         else:
             fractions = cfg.dataset_fractions if 'dataset_fractions' in dir(cfg) else [0.8, 0.1, 0.1]
-            self.dataset = Dataset(self.cfg.dataset, minibatch_size=self.cfg.minibatch_size,
+            data = self.build_dataset(self.cfg, self.cfg.dataset)
+            if data is None:
+                data = self.cfg.dataset
+            self.dataset = Dataset(data, 
+                                   minibatch_size=self.cfg.minibatch_size,
                                    fractions=fractions,
                                    preprocessing_function=self.preprocess_dataset)
 
@@ -28,6 +32,15 @@ class ModelFuncs(object):
         self.minibatch_idx = 0
 
         self.set_constant_parameters_from_cfg()
+
+    def build_dataset(self, cfg, path):
+        """
+        Builds the dataset dictionary.
+        :param cfg: configuration
+        :param path: dataset location as specified in config
+        :return: dataset dictionary
+        """
+        return None
 
     def preprocess_dataset(self, ds):
         """

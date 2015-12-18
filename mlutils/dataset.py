@@ -112,8 +112,11 @@ class Dataset(object):
             else:
                 if self.n_samples is None:
                     self.n_samples = val.shape[-1]
+                    n_samples_set_by = key
                 elif val.shape[-1] != self.n_samples:
-                    raise ValueError("dataset contains arrays with different number of samples (last dimension)")
+                    raise ValueError("dataset contains arrays with different number of samples (last dimension): "
+                                     "n_samples=%d (from %s) but variable %s has shape %s" % \
+                                     (self.n_samples, n_samples_set_by, key, str(val.shape)))
 
         # perform split
         idx_trn, idx_val, idx_tst = self._split_function(ds)
