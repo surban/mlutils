@@ -131,7 +131,7 @@ def sample_list_to_array(sample_list):
     :return: An array, where the last dimension is the sample index and the second-last dimension is the step index.
     """
     other_dims = sample_list[0].shape[0:-1]
-    max_steps = max([smpl.shape[-1] for smpl in sample_list])
+    max_steps = max([smpl.shape[-1] for smpl in sample_list]) + 1   # ensure one invalid sample between sequences
     dims = other_dims + (max_steps, len(sample_list))
 
     ary = np.zeros(dims, dtype=sample_list[0].dtype)
@@ -139,6 +139,13 @@ def sample_list_to_array(sample_list):
         ary[..., 0:smpl.shape[-1], idx] = smpl
     return ary
 
+def sample_list_to_valid(sample_list):
+    valid_list = [np.ones(smpl.shape[-1]) for smpl in sample_list]
+    return sample_list_to_array(valid_list)
+
+def sample_list_to_n_steps(sample_list):
+    n_steps = [smpl.shape[-1] for smpl in sample_list]
+    return np.asarray(n_steps, dtype=int)
 
 def combine_sample_steps(n_steps, data):
     """
@@ -165,8 +172,16 @@ def combine_sample_steps(n_steps, data):
 
     return combined
 
+def combine_valid_steps(valid, data):
+    """
+    Combines all steps from all samples of the given data.
+    :param valid: valid[step, smpl] 
+    :param data: data[..., step, smpl] - data to combine
+    :return: combined[..., smpl] - all valid steps from all samples concatenated
+    """
+    return combine_sample_steps(valid_to_n_steps(valid), data)
 
-def divide_sample_steps(n_steps, combined):
+def divide_sample_steps(n_steps, combined, n_max_steps=None):
     """
     Reverses the combination of steps of all samples done by the combine_sample_steps function.
     :param n_steps: n_steps: n_steps[smpl] - number of the steps in the given sample.
@@ -174,7 +189,8 @@ def divide_sample_steps(n_steps, combined):
     :return: data: data[..., step, smpl] - data with separate dimensions for step and sample
     """
     n_samples = n_steps.shape[0]
-    n_max_steps = np.max(n_steps)
+    if n_max_steps is None:
+        n_max_steps = np.max(n_steps)
     shp = combined.shape[0:-1]
     data = np.zeros(shp + (n_max_steps, n_samples), dtype=combined.dtype)
 
@@ -186,6 +202,173 @@ def divide_sample_steps(n_steps, combined):
     assert pos == combined.shape[-1]
 
     return data
+
+def divide_into_sequences(last_step, combined):
+    """
+    Reverses the combination of steps of all samples done by the combine_sample_steps function.
+    :param last_step: last_step[smpl]
+    :param combined: combined[..., smpl] - all valid steps from all samples concatenated
+    :return: data: data[..., step, smpl] - data with separate dimensions for step and sample
+    """
+    n_steps = last_step_to_n_steps(last_step)
+    return divide_sample_steps(n_steps, combined)
+
+def last_step_to_n_steps(last_step):
+    """
+    Reconstructs the number of steps of each sequence from a is-last-step vector.
+    :param last_step: last_step[smpl]
+    :return: n_steps[smpl]
+    """
+    n_steps = []
+    ns = 0
+    for ls in last_step:
+        ns += 1
+        if ls != 0:
+            n_steps.append(ns)
+            ns = 0
+    return np.asarray(n_steps, dtype=int)
+
+def flat_valid_to_n_steps(flat_valid):
+    """
+    Reconstructs the number of steps of each sequence from a flattened valid vector.
+    There must be at least one invalid sample between two sequences.
+    :param flat_valid: flat_valid[smpl]
+    :return: n_steps[smpl]
+    """
+    n_steps = []
+    ns = 0
+    last_valid = True
+    for v in flat_valid:
+        if v != 0:
+            ns += 1
+            last_valid = True
+        elif last_valid:
+            n_steps.append(ns)
+            ns = 0
+            last_valid = False
+    if last_valid:
+        n_steps.append(ns)
+    return np.asarray(n_steps, dtype=int)
+
+
+def valid_to_n_steps(valid):
+    """
+    Counts the number of valid steps (for each sample).
+    :param valid: valid[step, smpl] or valid[step]
+    :returns: n_steps[smpl] or n_steps
+    """
+    if valid.ndim == 1:
+        return np.count_nonzero(valid)
+    elif valid.ndim == 2:
+        n_samples = valid.shape[1]
+        n_steps = np.zeros(n_samples, dtype=int)
+        for smpl in range(n_samples):
+            n_steps[smpl] = valid_to_n_steps(valid[:, smpl])
+        return n_steps  
+    else:
+        raise ValueError("valid has wrong number of dimensions")  
+        
+def n_steps_to_valid(n_steps, max_steps=None):
+    """
+    Converts the number of valid steps (for each sample) into a validity vector.
+    :param n_steps: n_steps[smpl] or n_steps
+    :param max_steps: maximum number of steps (used as length for valid vector) 
+    :returns: valid[step, smpl] or valid[step]
+    """
+    if isinstance(n_steps, (int, long)):
+        if max_steps is None:
+            max_steps = n_steps
+        valid = np.zeros(max_steps)
+        valid[0:n_steps] = 1
+    else:
+        if max_steps is None:
+            max_steps = np.max(n_steps)
+        n_samples = n_steps.shape[0]
+        valid = np.zeros((max_steps, n_samples))
+        for smpl in range(n_samples):
+            valid[:, smpl] = n_steps_to_valid(n_steps[smpl], max_steps)
+        return valid
+
+def combine_valid_steps_of_dataset(ds):
+    """
+    Converts a dataset that has variables of the form var[..., step, smpl] to the 
+    form var[..., smpl], i.e. each step becomes a separate sample.
+    :param ds: dict of (name, value[..., step, smpl])
+    :returns: dict of (name, value[..., smpl])
+    """
+    valid = ds['valid']
+    n_steps = valid_to_n_steps(valid)
+    n_samples = valid.shape[1]
+    valid_steps, valid_smpls = np.nonzero(valid)
+    n_flat_samples = len(valid_smpls)
+
+    # flatten variables over steps and samples 
+    flt_ds = {}
+    for var, val in ds.iteritems():
+        if var == 'valid' or var == 'n_steps':
+            pass
+        elif var.startswith('meta_'):
+            flt_ds[var] = val
+        else:
+            # print "combining %s of shape %s" % (var, str(val.shape))
+            flt_ds[var] = combine_valid_steps(valid, val)
+
+    # map steps of samples to new sample indices
+    smpl_becomes = {}
+    pos = 0
+    for smpl in range(n_samples):
+        smpl_becomes[smpl] = []
+        for step in range(n_steps[smpl]):
+            smpl_becomes[smpl].append(pos)
+            pos += 1
+
+    # map data set partitions specified in dataset to new indices
+    for mi in ['meta_idx_trn', 'meta_idx_val', 'meta_idx_tst']:
+        flt_ds[mi] = reduce(lambda l, smpl: l + smpl_becomes[smpl], ds[mi], [])
+
+    # mark last steps of each sequence to make division back into sequences possible
+    last_step = np.zeros(n_flat_samples)
+    for smpl in range(n_samples):
+        last_step[smpl_becomes[smpl][-1]] = 1
+    flt_ds['last_step'] = last_step
+
+    return flt_ds
+
+def divide_combined_dataset(flt_ds):
+    """
+    Divides a dataset that was processed using the combine_valid_combine_valid_steps_of_dataset function
+    back into its original form.
+    :param flt_ds: dict of (name, value[..., smpl])
+    :return: dict of (name, value[..., step, smpl])
+    """
+    n_steps = last_step_to_n_steps(flt_ds['last_step'])
+
+    ds = {}
+    for var, val in flt_ds.iteritems():
+        if var == 'last_step':
+            pass
+        elif var.startswith('meta_'):
+            ds[var] = val
+        else:
+            ds[var] = divide_sample_steps(n_steps, val)
+
+    ds['n_steps'] = n_steps
+    ds['valid'] = n_steps_to_valid(n_steps)
+
+    return ds
+
+def divide_combined_dataset_var(ds, var):
+    """
+    Divides a variable from a dataset that was processed using the combine_valid_combine_valid_steps_of_dataset function
+    back into its original form.
+    :param ds: dict of (name, value[..., step, smpl]) (not the combined dataset)
+    :param var: var[..., smpl]
+    :return: var[..., step, smpl]
+    """
+    if 'n_steps' not in ds:
+        raise ValueError("dataset must not be the combined version (apply divide_combined_dataset first)")
+    return divide_sample_steps(ds['n_steps'], var)
+
 
 ############################################################################
 # Theano intermediate printing

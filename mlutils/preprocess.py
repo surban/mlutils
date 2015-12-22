@@ -108,7 +108,7 @@ def for_step_data(func):
             data_pc = ret[0]
         else:
             data_pc = ret
-        data_p = divide_sample_steps(n_steps, data_pc)
+        data_p = divide_sample_steps(n_steps, data_pc, n_max_steps=data.shape[-2])
         if isinstance(ret, tuple):
             return (data_p,) + ret[1:]
         else:

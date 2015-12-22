@@ -1,74 +1,63 @@
-import matplotlib.pyplot as plt
 import theano.tensor as T
-import numpy as np
-from os.path import join
 from theano.scan_module.scan import scan
-
-from addiplication.nnet.abelpsi_f import abel_fracexpn_f
-from midi.utils import midiwrite
-from mlutils.config import load_cfg
-from mlutils.dataset import Dataset
-from mlutils.gpu import function, gather, post
 from mlutils.misc import random_matrix_with_spectral_radius, print_node
 from mlutils.modelfuncs import ModelFuncs
 from mlutils.parameterset import ParameterSet
-from mlutils.preprocess import for_step_data, pca_white, pca_white_inverse
+from mlutils.gpu import function
+from mlmodels.nn import NN
 
 
-class Rnn(object):
+class RNN(NN):
 
-    def __init__(self, cfg, n_inputs, n_outputs, n_feedback_steps=0):
-        self.cfg = cfg
+    def __init__(self, loss, n_units, transfer_funcs, gradient_steps=-1, n_feedback_steps=0):
+        assert len(n_units) == 3, "currently RNN must consists of one input, one hidden and one output layer"
+        
+        n_inputs, n_hiddens, n_outputs = n_units
+        input_tf, hidden_tf, output_tf = transfer_funcs 
+        
         self.n_inputs = n_inputs
+        self.n_hiddens = n_hiddens
         self.n_outputs = n_outputs
+        self.input_tf = input_tf
+        self.hidden_tf = hidden_tf
+        self.output_tf = output_tf
 
-        print "Number of inputs:  ", n_inputs
-        print "Number of hiddens: ", cfg.n_hiddens
-        print "Number of outputs: ", n_outputs
-        print "Transfer function: ", cfg.transfer_func
+        print "====== RNN ========"
+        print "Loss:              ", loss
+        print "Number of units:   ", n_units
+        print "Transfer function: ", transfer_funcs
+        print "==================="
 
         # create ParameterSet
-        pars = dict(in_hid=(cfg.n_hiddens, n_inputs),
-                    hid_hid=(cfg.n_hiddens, cfg.n_hiddens),
-                    hid_bias=(cfg.n_hiddens,),
-                    hid_out=(n_outputs, cfg.n_hiddens),
+        pars = dict(inp_hid=(n_hiddens, n_inputs),
+                    hid_hid=(n_hiddens, n_hiddens),
+                    hid_bias=(n_hiddens,),
+                    hid_out=(n_outputs, n_hiddens),
                     out_bias=(n_outputs,))
-        if cfg.transfer_func == 'abel':
-            pars['hid_n'] = (cfg.n_hiddens,)
-            pars['partitions'] = {'n': ['hid_n']}
-        ps = ParameterSet(**pars)
-        self.ps = ps
+        pars.update(self.transfer_func_parameter_shape('inp', input_tf, n_hiddens))                   
+        pars.update(self.transfer_func_parameter_shape('hid', hidden_tf, n_hiddens))
+        pars.update(self.transfer_func_parameter_shape('out', output_tf, n_outputs))
+        self.ps = ParameterSet(**pars)
 
-        def recursion(inp, prv_hid):
+        ###########################################################################
+        # RNN recursion
+        ###########################################################################
+
+        def recursion(inp_act, prv_hid):
+            # input 
+            inp = self.make_transfer_func('inp', input_tf)(inp_act)
+        
             # hiddens given inputs and previous hiddens
-            prv_hid_act = T.dot(ps.hid_hid, prv_hid)
-            in_act = T.dot(ps.in_hid, inp)
-            hid_bias_bc = T.shape_padright(ps.hid_bias)
+            in_act = T.dot(self.ps.inp_hid, inp)
+            prv_hid_act = T.dot(self.ps.hid_hid, prv_hid)
+            hid_bias_bc = T.shape_padright(self.ps.hid_bias)
             hid_act = prv_hid_act + in_act + hid_bias_bc
-            if cfg.transfer_func == 'tanh':
-                hid = T.tanh(hid_act)
-            elif cfg.transfer_func == 'linear':
-                hid = hid_act
-            elif cfg.transfer_func == 'relu':
-                hid = T.nnet.relu(hid_act)
-            elif cfg.transfer_func == 'abel':
-                # hid_act = T.printing.Print("hid_act")(hid_act)
-                hid_relu = T.nnet.relu(hid_act)
-                # hid_relu = T.printing.Print("hid_relu")(hid_relu)
-                hid = abel_fracexpn_f(hid_relu, T.shape_padright(self.ps.hid_n))
-                # hid = T.printing.Print("hid")(hid)
-            else:
-                assert False
+            hid = self.make_transfer_func('hid', hidden_tf)(hid_act)
 
             # outputs given hiddens
-            out_act = T.dot(self.ps.hid_out, hid)
             out_bias_bc = T.shape_padright(self.ps.out_bias)
-            if cfg.loss == 'cross_entropy':
-                out = T.nnet.sigmoid(out_act + out_bias_bc)
-            elif cfg.loss == 'l2':
-                out = out_act + out_bias_bc
-            else:
-                assert False
+            out_act = T.dot(self.ps.hid_out, hid) + out_bias_bc
+            out = self.make_transfer_func('out', output_tf)(out_act)
 
             return out, hid
 
@@ -81,25 +70,17 @@ class Rnn(object):
         n_samples = v_input.shape[2]
 
         # calculate predictions
-        hid_init = T.zeros((cfg.n_hiddens, n_samples))
+        hid_init = T.zeros((n_hiddens, n_samples))
         (pred_scan, _), _ = scan(recursion,
                                  sequences=[{'input': v_input.dimshuffle(1, 0, 2), 'taps': [0]}],
                                  outputs_info=[None,
                                                {'initial': hid_init, 'taps': [-1]}],
-                                 truncate_gradient=cfg.gradient_steps)
+                                 truncate_gradient=gradient_steps)
         pred = pred_scan.dimshuffle(1, 0, 2)            # pred[channel, step, smpl]
 
         # calculate loss
         # step_loss[step, smpl]
-        if cfg.loss == 'cross_entropy':
-            print "Using cross entropy loss"
-            step_loss = -T.sum(T.xlogx.xlogy0(v_output, T.maximum(0.001, pred)), axis=0)
-            step_loss += -T.sum(T.xlogx.xlogy0(1 - v_output, T.maximum(0.001, 1 - pred)), axis=0)
-        elif cfg.loss == 'l2':
-            print "Using L2^2 loss"
-            step_loss = T.sum((v_output - pred)**2, axis=0)
-        else:
-            assert False
+        step_loss = self.fit_loss(loss, output_tf, v_output, pred)
         loss = T.sum(v_valid * step_loss) / T.sum(v_valid)
         loss_grad = T.grad(loss, self.ps.flat)
 

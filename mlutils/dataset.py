@@ -1,6 +1,6 @@
 from math import ceil
 import numpy as np
-from mlutils.gpu import post
+from mlutils.gpu import post, gather
 
 
 class Dataset(object):
@@ -97,8 +97,10 @@ class Dataset(object):
         elif self._ds_source == 'data':
             ds = dict(self._ds_data)
             for key, value in ds.iteritems():
-                if not (isinstance(key, basestring) and isinstance(value, np.ndarray)):
-                    raise TypeError("passed dataset must consist of (string, ndarray)-pairs")
+                ds[key] = np.asarray(value)
+                if not isinstance(key, basestring):
+                    raise TypeError("passed dataset must consist of (string, ndarray)-pairs. violated by key %s" % \
+                                    str(key))
 
         # do preprocessing
         if self._preprocessing_function:
@@ -203,6 +205,42 @@ class Dataset(object):
             else:
                 return 1
 
+        def gather(self):
+            return Dataset.GatheredPartition(self)
+
+        def __getitem__(self, item):
+            return getattr(self, item)
+
+        def __contains__(self, item):
+            return item in self._keys
+
+        def iterkeys(self):
+            return iter(self._keys)
+
+        def iteritems(self):
+            for key in self._keys:
+                yield key, getattr(self, key)
+
+    class GatheredPartition(object):
+        def __init__(self, partition):
+            self._keys = partition._keys
+            for key in self._keys:
+                data = gather(getattr(partition, key))
+                setattr(self, key, data)
+
+        def __getitem__(self, item):
+            return getattr(self, item)
+
+        def __contains__(self, item):
+            return item in self._keys
+
+        def iterkeys(self):
+            return iter(self._keys)
+
+        def iteritems(self):
+            for key in self._keys:
+                yield key, getattr(self, key)
+
     class Minibatch(object):
         """Minibatch of a dataset partition (train / validation / test).
         Records from the dataset .npz file are exposed as members."""
@@ -212,5 +250,39 @@ class Dataset(object):
                 e = partition.n_samples
             for key in partition._keys:
                 setattr(self, key, getattr(partition, key)[..., b:e])
+            self._keys = partition._keys
 
+        def __getitem__(self, item):
+            return getattr(self, item)
+
+        def __contains__(self, item):
+            return item in self._keys
+
+        def iterkeys(self):
+            return iter(self._keys)
+
+        def iteritems(self):
+            for key in self._keys:
+                yield key, getattr(self, key)
+
+
+class DictPartition(object):
+
+    def __init__(self, data):
+        assert isinstance(data, dict)
+        self._data = data
+        for key, data in self._data.iteritems():
+            setattr(self, key, data)
+
+    def __getitem__(self, item):
+        return self._data[item]
+
+    def __contains__(self, item):
+        return item in self._data
+
+    def iterkeys(self):
+        return self._data.iterkeys()
+
+    def iteritems(self):
+        return self._data.iteritems()
 
