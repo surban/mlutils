@@ -130,8 +130,11 @@ def sample_list_to_array(sample_list):
                         last dimension is the step index.
     :return: An array, where the last dimension is the sample index and the second-last dimension is the step index.
     """
+    if len(sample_list) == 0:
+        raise ValueError("sample_list is empty")
+
     other_dims = sample_list[0].shape[0:-1]
-    max_steps = max([smpl.shape[-1] for smpl in sample_list]) + 1   # ensure one invalid sample between sequences
+    max_steps = max([smpl.shape[-1] for smpl in sample_list])
     dims = other_dims + (max_steps, len(sample_list))
 
     ary = np.zeros(dims, dtype=sample_list[0].dtype)

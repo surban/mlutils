@@ -67,6 +67,8 @@ class RNN(NN):
         v_valid = T.fmatrix('v_valid')                  # v_valid[step, smpl]
         v_output = T.ftensor3('v_output')               # v_output[channel, step, smpl]
         v_input = T.ftensor3('v_input')                 # v_input[channel, step, smpl]
+        v_step_input = T.fmatrix('v_step_input')        # v_step_input[channel, smpl]
+        v_step_hidden = T.fmatrix('v_step_hidden')      # v_step_hidden[unit, smpl]
         n_samples = v_input.shape[2]
 
         # calculate predictions
@@ -78,6 +80,9 @@ class RNN(NN):
                                  truncate_gradient=gradient_steps)
         pred = pred_scan.dimshuffle(1, 0, 2)            # pred[channel, step, smpl]
 
+        # calculate one step prediction
+        step_pred, step_hid = recursion(v_step_input, v_step_hidden)
+
         # calculate loss
         # step_loss[step, smpl]
         step_loss = self.fit_loss(loss, output_tf, v_output, pred)
@@ -86,6 +91,8 @@ class RNN(NN):
 
         # define functions
         self.f_predict = function([self.ps.flat, v_input], pred, name='f_predict')
+        self.f_predict_step = function([self.ps.flat, v_step_input, v_step_hidden], [step_pred, step_hid],
+                                       name='f_predict_step')
         self.f_loss = function([self.ps.flat, v_valid, v_input, v_output], loss,
                                name='f_loss', on_unused_input='warn')
         self.f_loss_grad = function([self.ps.flat, v_valid, v_input, v_output], loss_grad,

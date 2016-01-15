@@ -110,6 +110,27 @@ class ModelFuncs(object):
 
         return ds
 
+    def perform_pca(self, data):
+        """
+        Performs the same PCA whitening as done during preprocessing.
+        :param data: data[feature, smpl] or data[feature, step, smpl]
+        :return: whitened[comp, smpl] or whitened[comp, step, smpl]
+        """
+        if self.cfg.preprocess_pca is not None:
+            if data.ndim == 2:
+                return pca_white(data,
+                                 variances=self.dataset.meta_pca_vars,
+                                 axes=self.dataset.meta_pca_axes,
+                                 means=self.dataset.meta_pca_means)
+            elif data.ndim == 3:
+                n_steps = np.full((data.shape[2],), data.shape[1], dtype=int)
+                return for_step_data(pca_white)(n_steps, data,
+                                                variances=self.dataset.meta_pca_vars,
+                                                axes=self.dataset.meta_pca_axes,
+                                                means=self.dataset.meta_pca_means)
+        else:
+            return data
+
     def invert_pca(self, whitened):
         """
         Inverts the PCA whitening done during preprocessing.
@@ -622,10 +643,10 @@ class ModelFuncs(object):
                 'no_negative_data': False,
                 'positive_weights_init': False,
                 'minibatch_size': 200
-               }
+               }.copy()
 
     @classmethod
-    def train_from_cfg(cls):
+    def train_from_cfg(cls, with_predictions=True):
         """
         Creates and trains model functions using configuration specified at command line.
         """
@@ -641,23 +662,32 @@ class ModelFuncs(object):
                                      max_missed_val_improvements=cfg.max_missed_val_improvements,
                                      iteration_gain=cfg.iteration_gain)
 
-        # plot weight histogram
-        plt.figure(figsize=(14, 14))
-        plot_weight_histograms(funcs.ps, funcs.ps.all_vars())
-        plt.savefig(join(cfg_dir, "weights.pdf"))
-        plt.close()
+        if with_predictions:
+            # plot weight histogram
+            plt.figure(figsize=(14, 14))
+            plot_weight_histograms(funcs.ps, funcs.ps.all_vars())
+            plt.savefig(join(cfg_dir, "weights.pdf"))
+            plt.close()
 
-        # obtain predictions
-        trn_inp = gather(funcs.dataset.trn.input)
-        trn_tgt = gather(funcs.dataset.trn.target)
-        trn_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.trn))
-        funcs.show_results('trn', funcs.dataset.trn.gather(), trn_inp, trn_tgt, trn_pred)
+            # obtain predictions
+            trn_inp = gather(funcs.dataset.trn.input)
+            trn_tgt = gather(funcs.dataset.trn.target)
+            trn_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.trn))
+            funcs.show_results('trn', funcs.dataset.trn.gather(), trn_inp, trn_tgt, trn_pred)
 
-        tst_inp = gather(funcs.dataset.tst.input)
-        tst_tgt = gather(funcs.dataset.tst.target)
-        tst_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.tst))
-        funcs.show_results('tst', funcs.dataset.tst.gather(), tst_inp, tst_tgt, tst_pred)
+            tst_inp = gather(funcs.dataset.tst.input)
+            tst_tgt = gather(funcs.dataset.tst.target)
+            tst_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.tst))
+            funcs.show_results('tst', funcs.dataset.tst.gather(), tst_inp, tst_tgt, tst_pred)
+        else:
+            trn_inp = None
+            trn_tgt = None
+            trn_pred = None
+            tst_inp = None
+            tst_tgt = None
+            tst_pred = None
 
+        cph.release()
         return dict(cfg=cfg, cfg_dir=cfg_dir, funcs=funcs, his=his,
                     trn_inp=trn_inp, trn_tgt=trn_tgt, trn_pred=trn_pred,
                     tst_inp=tst_inp, tst_tgt=tst_tgt, tst_pred=tst_pred)
