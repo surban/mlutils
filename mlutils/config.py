@@ -239,8 +239,8 @@ class CheckpointHandler(object):
             # load Fortran DLLs before setting our own console control handler
             # because they replace it with their own handler
             basepath = imp.find_module('numpy')[1]
-            ctypes.CDLL(os.path.join(basepath, 'core', 'libmmd.dll'))
-            ctypes.CDLL(os.path.join(basepath, 'core', 'libifcoremd.dll'))
+            #ctypes.CDLL(os.path.join(basepath, 'core', 'libmmd.dll'))
+            #ctypes.CDLL(os.path.join(basepath, 'core', 'libifcoremd.dll'))
 
             # install win32 console control event handler
             import win32api

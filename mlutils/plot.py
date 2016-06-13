@@ -75,8 +75,8 @@ def plot_weight_histograms(ps, weights_to_plot, bins=10):
     :param weights_to_plot: list of weights to plot
     """
     for i, par in enumerate(weights_to_plot):
-        plt.subplot(len(weights_to_plot), 1, i)
-        plt.hist(gather(ps[par]).flat, bins=bins)
+        plt.subplot(len(weights_to_plot), 1, i + 1)
+        plt.hist(np.asarray(gather(ps[par]).flat), bins=bins)
         plt.xlabel(par)
     plt.tight_layout()
 
