@@ -113,9 +113,9 @@ class Dataset(object):
                 setattr(self, key, val)
             else:
                 if self.n_samples is None:
-                    self.n_samples = val.shape[-1]
+                    self.n_samples = val.shape[0]
                     n_samples_set_by = key
-                elif val.shape[-1] != self.n_samples:
+                elif val.shape[0] != self.n_samples:
                     raise ValueError("dataset contains arrays with different number of samples (last dimension): "
                                      "n_samples=%d (from %s) but variable %s has shape %s" % \
                                      (self.n_samples, n_samples_set_by, key, str(val.shape)))
@@ -164,7 +164,7 @@ class Dataset(object):
             self.n_bytes = 0
 
             for key in self._keys:
-                data = ds[key][..., idx]
+                data = ds[key][idx, ...]
                 if pad_data:
                     data = self._pad(data, minibatch_size)
                 self.n_bytes += data.nbytes
@@ -173,14 +173,14 @@ class Dataset(object):
                 setattr(self, key, data)
 
         def _pad(self, data, multiple):
-            n_smpls = data.shape[-1]
+            n_smpls = data.shape[0]
             if n_smpls % multiple == 0:
                 return data
             else:
                 paded_shape = data.shape
-                paded_shape[-1] = (int(n_smpls / multiple) + 1) * multiple
+                paded_shape[0] = (int(n_smpls / multiple) + 1) * multiple
                 paded_data = np.zeros(paded_shape, dtype=data.dtype)
-                paded_data[..., 0:n_smpls] = data[..., 0:n_smpls]
+                paded_data[0:n_smpls, ...] = data[0:n_smpls, ...]
                 return paded_data
 
         def minibatch(self, n):
@@ -249,7 +249,7 @@ class Dataset(object):
             if e > partition.n_samples:
                 e = partition.n_samples
             for key in partition._keys:
-                setattr(self, key, getattr(partition, key)[..., b:e])
+                setattr(self, key, getattr(partition, key)[b:e, ...])
             self._keys = partition._keys
 
         def __getitem__(self, item):
