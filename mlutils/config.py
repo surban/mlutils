@@ -24,7 +24,7 @@ def multiglob(*patterns):
 def base_dir_of(p):
     while not os.path.isdir(os.path.join(p, "cfgs")):
         p = os.path.join(p, "..")
-        if len(p) > 500:
+        if len(p) > 1000:
             raise RuntimeError("Cannot find base directory (contains a 'cfgs' subdirectory)")
     return p
 
@@ -35,6 +35,8 @@ def base_dir():
     :returns: path to the base directory"""
     try:
         p = os.path.dirname(main.__file__)
+        if p.endswith("mlutils"):
+            p = ""
     except AttributeError:
         p = ""
     return base_dir_of(p)
