@@ -11,6 +11,7 @@ from mlutils.parameterlogger import ParameterLogger
 from mlutils.misc import n_steps_to_valid, valid_to_n_steps
 from mlutils.plot import plot_weight_histograms
 from mlutils.preprocess import pca_white, for_step_data, pca_white_inverse
+from mlutils.gitlogger import git_log
 
 
 class ModelFuncs(object):
@@ -328,7 +329,7 @@ class ModelFuncs(object):
                          reset_termination_criteria=False, desired_loss=None, initialize=True,
                          large_gradient_threshold=0.0, print_gradient_info=False, print_gradient=False,
                          print_parameters=False, log_parameters=[], plot_logged_parameters=True,
-                         print_logged_parameters=False, check_gradient_finite=False):
+                         print_logged_parameters=False, check_gradient_finite=False, log_modules=None):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -351,6 +352,7 @@ class ModelFuncs(object):
         :param plot_logged_parameters: if True, logged parameters are plotted to params.png
         :param print_logged_parameters: if True, logged parameters are also printed to standard output
         :param check_gradient_finite: if True, gradient is checked for infs and nans in every iteration
+        :param log_modules: list of python modules for which version or latest git commit should be logged
         :return: ParameterHistory object of training
         """
 
@@ -400,6 +402,7 @@ class ModelFuncs(object):
                                    desired_loss=desired_loss, iteration_gain=iteration_gain)
             logger = ParameterLogger(out_dir=cfg_dir, parameters=log_parameters,
                                      plot=plot_logged_parameters, print_stdout=print_logged_parameters)
+            git_log(modules=log_modules, log_dir=cfg_dir)
 
             # Record initial loss and parameters
             self.record_loss(his, itr)
@@ -424,6 +427,7 @@ class ModelFuncs(object):
             his.start()
 
             logger = checkpoint['logger']
+            git_log(modules=log_modules, log_dir=cfg_dir, check=True)
 
         # reset termination criteria if requested
         second_chance_file = join(cfg_dir, "2nd_chance")
