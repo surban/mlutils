@@ -33,7 +33,7 @@ class ModelFuncs(object):
             self.dataset = dataset
         else:
             fractions = cfg.dataset_fractions if 'dataset_fractions' in dir(cfg) else [0.8, 0.1, 0.1]
-            data = self.build_dataset(self.cfg, self.cfg.dataset)
+            data = self.build_dataset(self.cfg, getattr(self.cfg, 'dataset', None))
             if data is None:
                 data = self.cfg.dataset
             self.dataset = Dataset(data, 
@@ -662,6 +662,9 @@ class ModelFuncs(object):
                                      max_missed_val_improvements=cfg.max_missed_val_improvements,
                                      iteration_gain=cfg.iteration_gain)
 
+        # set history field
+        setattr(funcs, 'his', his)
+
         if with_predictions:
             # plot weight histogram
             plt.figure(figsize=(14, 14))
@@ -675,6 +678,11 @@ class ModelFuncs(object):
             trn_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.trn))
             funcs.show_results('trn', funcs.dataset.trn.gather(), trn_inp, trn_tgt, trn_pred)
 
+            val_inp = gather(funcs.dataset.val.input)
+            val_tgt = gather(funcs.dataset.val.target)
+            val_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.tst))
+            funcs.show_results('val', funcs.dataset.val.gather(), val_inp, val_tgt, val_pred)
+
             tst_inp = gather(funcs.dataset.tst.input)
             tst_tgt = gather(funcs.dataset.tst.target)
             tst_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.tst))
@@ -683,6 +691,9 @@ class ModelFuncs(object):
             trn_inp = None
             trn_tgt = None
             trn_pred = None
+            val_inp = None
+            val_tgt = None
+            val_pred = None
             tst_inp = None
             tst_tgt = None
             tst_pred = None
@@ -690,9 +701,18 @@ class ModelFuncs(object):
         cph.release()
         return dict(cfg=cfg, cfg_dir=cfg_dir, funcs=funcs, his=his,
                     trn_inp=trn_inp, trn_tgt=trn_tgt, trn_pred=trn_pred,
+                    val_inp=val_inp, val_tgt=val_tgt, val_pred=val_pred,
                     tst_inp=tst_inp, tst_tgt=tst_tgt, tst_pred=tst_pred)
 
     def show_results(self, partition, ds, inp, tgt, pred):
+        """
+        Should be overriden to show prediction results, for example plot and save to disk.
+        :param partition: dataset partition, is 'trn', 'val' or 'tst'
+        :param ds: corresponding dataset
+        :param inp: inputs[smpl, ...]
+        :param tgt: targets[smpl, ...]
+        :param pred: predictions[smpl, ...]
+        """
         pass
 
     def create_model(self, cfg):
