@@ -240,10 +240,11 @@ class CheckpointHandler(object):
         if sys.platform == 'win32':
             # load Fortran DLLs before setting our own console control handler
             # because they replace it with their own handler
-            basepath = imp.find_module('numpy')[1]
+            #basepath = imp.find_module('numpy')[1]
             #ctypes.CDLL(os.path.join(basepath, 'core', 'libmmd.dll'))
             #ctypes.CDLL(os.path.join(basepath, 'core', 'libifcoremd.dll'))
-
+            #Update 
+            os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
             # install win32 console control event handler
             import win32api
             win32api.SetConsoleCtrlHandler(self._console_ctrl_handler, 1)
