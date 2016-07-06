@@ -146,6 +146,9 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     for k, v in defaults.iteritems():
         if k not in dir(cfg):
             setattr(cfg, k, v)
+    def get_func(name):
+        return getattr(cfg, name, default=None)
+    setattr(cfg, 'get', get_func)
 
     # set additional information
     setattr(cfg, 'out_dir', outdir)
