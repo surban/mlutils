@@ -45,6 +45,12 @@ def git_log(modules=None, log_dir=None, check=False):
     os.chdir(prev_path)
     if log_dir is not None:
         log_filename = join(log_dir, 'gitlog.json')
+        if check:
+            with open(log_filename, 'rb') as log_file:
+                old_log = json.load(log_file)
+                for m in modules:
+                    if old_log["commits"][m].split()[0] != log["commits"][m].split()[0]:
+                        print 'WARNING: There have been changes in module %s since the last run' % m
         with open(log_filename, 'wb') as log_file:
             json.dump(log, log_file, indent=4)
     return log
