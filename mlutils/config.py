@@ -16,6 +16,7 @@ import climin
 from argparse import ArgumentParser
 
 
+
 def multiglob(*patterns):
     return itertools.chain.from_iterable(
         glob.glob(pattern) for pattern in patterns)
@@ -146,9 +147,14 @@ def load_cfg(config_name=None, prepend="", clean_outputs=False, with_checkpoint=
     for k, v in defaults.iteritems():
         if k not in dir(cfg):
             setattr(cfg, k, v)
+
     def get_func(name):
-        return getattr(cfg, name, default=None)
+        return getattr(cfg, name, None)
     setattr(cfg, 'get', get_func)
+
+    def has_func(name):
+        return getattr(cfg, name, None) is not None
+    setattr(cfg, 'has', has_func)
 
     # set additional information
     setattr(cfg, 'out_dir', outdir)
