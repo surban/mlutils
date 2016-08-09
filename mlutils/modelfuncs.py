@@ -680,7 +680,7 @@ class ModelFuncs(object):
 
             val_inp = gather(funcs.dataset.val.input)
             val_tgt = gather(funcs.dataset.val.target)
-            val_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.tst))
+            val_pred = gather(funcs.predict(funcs.ps.data, funcs.dataset.val))
             funcs.show_results('val', funcs.dataset.val.gather(), val_inp, val_tgt, val_pred)
 
             tst_inp = gather(funcs.dataset.tst.input)
