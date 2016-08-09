@@ -12,3 +12,4 @@ from parameterset import ParameterSet
 from plot import imshow_grid
 from dataset import Dataset
 from preprocess import pca_white, zca, for_step_data
+from gitlogger import git_log

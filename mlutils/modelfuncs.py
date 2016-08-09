@@ -11,15 +11,16 @@ from mlutils.parameterlogger import ParameterLogger
 from mlutils.misc import n_steps_to_valid, valid_to_n_steps
 from mlutils.plot import plot_weight_histograms
 from mlutils.preprocess import pca_white, for_step_data, pca_white_inverse
+from mlutils.gitlogger import git_log
 
 
 class ModelFuncs(object):
     """Base class for callable functions of a Theano model."""
 
     def __init__(self, model=None, cfg=None, dataset=None):
-        if cfg.preprocess_pca is not None and cfg.preprocess_pca != cfg.n_units[0]:
+        if cfg.has('preprocess_pca') and cfg.preprocess_pca != cfg.n_units[0]:
             raise ValueError("number of PCA components must match input unit count")
-        if cfg.preprocess_pca is not None and cfg.loss == 'cross_entropy':
+        if cfg.has('preprocess_pca') and cfg.loss == 'cross_entropy':
             raise ValueError("PCA whitening does not work with cross entropy loss")
 
         self.cfg = cfg
@@ -32,8 +33,8 @@ class ModelFuncs(object):
         if dataset is not None:
             self.dataset = dataset
         else:
-            fractions = cfg.dataset_fractions if 'dataset_fractions' in dir(cfg) else [0.8, 0.1, 0.1]
-            data = self.build_dataset(self.cfg, getattr(self.cfg, 'dataset', None))
+            fractions = cfg.dataset_fractions if self.cfg.has('dataset_fractions') else [0.8, 0.1, 0.1]
+            data = self.build_dataset(self.cfg, self.cfg.get('dataset'))
             if data is None:
                 data = self.cfg.dataset
             self.dataset = Dataset(data, 
@@ -62,10 +63,10 @@ class ModelFuncs(object):
         :param ds: dataset
         :return: preprocessed dataset
         """
-        if self.cfg.dataset_input != 'input':
+        if self.cfg.has('dataset_input') and self.cfg.dataset_input != 'input':
             ds['input'] = ds[self.cfg.dataset_input]
             del ds[self.cfg.dataset_input]
-        if self.cfg.dataset_target != 'target':
+        if self.cfg.has('dataset_target') and self.cfg.dataset_target != 'target':
             ds['target'] = ds[self.cfg.dataset_target]
             del ds[self.cfg.dataset_target]
 
@@ -76,12 +77,12 @@ class ModelFuncs(object):
             elif 'valid' in ds and 'n_steps' not in ds:
                 ds['n_steps'] = valid_to_n_steps(ds['valid'])
 
-        if self.cfg.dataset_samples is not None:
+        if self.cfg.has('dataset_samples'):
             ds['input'] = ds['input'][..., 0:self.cfg.dataset_samples]
             ds['target'] = ds['target'][..., 0:self.cfg.dataset_samples]
             print "Using only %d samples from dataset" % ds['input'].shape[-1]
 
-        if self.cfg.no_negative_data:
+        if self.cfg.get('no_negative_data'):
             minval = np.min(ds['input'])
             if minval < 0:
                 print "Adding %.3f to dataset inputs to ensure positive values." % (-minval)
@@ -89,7 +90,7 @@ class ModelFuncs(object):
             else:
                 print "Dataset inputs are already positive."
 
-        if self.cfg.preprocess_pca is not None:
+        if self.cfg.has('preprocess_pca'):
             ds['orig_input'] = np.copy(ds['input'])
             if ds['input'].ndim == 2:
                 res = pca_white(ds['input'], n_components=self.cfg.preprocess_pca, return_axes=True)
@@ -105,7 +106,7 @@ class ModelFuncs(object):
                                 pca_axes=ds['meta_pca_axes'],
                                 pca_means=ds['meta_pca_means'])
 
-        if self.cfg.use_training_as_validation:
+        if self.cfg.get('use_training_as_validation'):
             ds['meta_use_training_as_validation'] = self.cfg.use_training_as_validation
 
         return ds
@@ -116,7 +117,7 @@ class ModelFuncs(object):
         :param data: data[feature, smpl] or data[feature, step, smpl]
         :return: whitened[comp, smpl] or whitened[comp, step, smpl]
         """
-        if self.cfg.preprocess_pca is not None:
+        if self.cfg.has('preprocess_pca'):
             if data.ndim == 2:
                 return pca_white(data,
                                  variances=self.dataset.meta_pca_vars,
@@ -137,7 +138,7 @@ class ModelFuncs(object):
         :param whitened: whitened[comp, smpl] or whitened[comp, step, smpl]
         :returns: data[feature, smpl] or data[feature, step, smpl]
         """
-        if self.cfg.preprocess_pca is not None:
+        if self.cfg.has('preprocess_pca'):
             if whitened.ndim == 2:
                 return pca_white_inverse(whitened,
                                          self.dataset.meta_pca_vars,
@@ -209,14 +210,14 @@ class ModelFuncs(object):
         :param seed: random seed for initialization
         """
         if var is None:
-            if 'initialization_variance' in dir(self.cfg):
+            if self.cfg.has('initialization_variance'):
                 var = self.cfg.initialization_variance
-            elif 'initvar' in dir(self.cfg):
+            elif self.cfg.has('initvar' ):
                 var = self.cfg.initvar
             else:
                 var = 0.01
         if seed is None:
-            if 'initialization_seed' in dir(self.cfg):
+            if self.cfg.has('initialization_seed'):
                 seed = self.cfg.initialization_seed
             else:
                 seed = 1
@@ -224,7 +225,7 @@ class ModelFuncs(object):
         np.random.seed(seed)
         self.ps.data[:] = post(np.random.normal(0, var, size=self.ps.data.shape))
 
-        if self.cfg.positive_weights_init:
+        if self.cfg.get('positive_weights_init'):
             print "Ensuring positive initialization weights."
             self.ps.data[:] = xp.abs(self.ps.data)
 
@@ -328,7 +329,7 @@ class ModelFuncs(object):
                          reset_termination_criteria=False, desired_loss=None, initialize=True,
                          large_gradient_threshold=0.0, print_gradient_info=False, print_gradient=False,
                          print_parameters=False, log_parameters=[], plot_logged_parameters=True,
-                         print_logged_parameters=False, check_gradient_finite=False):
+                         print_logged_parameters=False, check_gradient_finite=False, log_modules=None):
         """
         Generic training procedure.
         :param cfg_dir: configuration directory
@@ -351,16 +352,17 @@ class ModelFuncs(object):
         :param plot_logged_parameters: if True, logged parameters are plotted to params.png
         :param print_logged_parameters: if True, logged parameters are also printed to standard output
         :param check_gradient_finite: if True, gradient is checked for infs and nans in every iteration
+        :param log_modules: list of python modules for which version or latest git commit should be logged
         :return: ParameterHistory object of training
         """
 
-        max_iters = self.cfg.max_iters if 'max_iters' in dir(self.cfg) else None
+        max_iters = self.cfg.max_iters if self.cfg.has('max_iters') else None
 
         # build gradient preprocessing chain
         grad_func = self.mb_loss_grad
 
         # gradient magnitude cap
-        if 'gradient_cap' in dir(self.cfg) and self.cfg.gradient_cap is not None:
+        if self.cfg.has('gradient_cap'):
             grad_with_cap_orig_grad = grad_func
             def grad_with_cap(pv):
                 g = grad_with_cap_orig_grad(pv)
@@ -372,7 +374,7 @@ class ModelFuncs(object):
             grad_func = grad_with_cap
 
         # gradient element cap
-        if 'gradient_element_cap' in dir(self.cfg) and self.cfg.gradient_element_cap is not None:
+        if self.cfg.has('gradient_element_cap'):
             grad_with_element_cap_orig_grad = grad_func
             def grad_with_element_cap(pv):
                 g = grad_with_element_cap_orig_grad(pv)
@@ -400,6 +402,7 @@ class ModelFuncs(object):
                                    desired_loss=desired_loss, iteration_gain=iteration_gain)
             logger = ParameterLogger(out_dir=cfg_dir, parameters=log_parameters,
                                      plot=plot_logged_parameters, print_stdout=print_logged_parameters)
+            git_log(modules=log_modules, log_dir=cfg_dir)
 
             # Record initial loss and parameters
             self.record_loss(his, itr)
@@ -424,6 +427,7 @@ class ModelFuncs(object):
             his.start()
 
             logger = checkpoint['logger']
+            git_log(modules=log_modules, log_dir=cfg_dir, check=True)
 
         # reset termination criteria if requested
         second_chance_file = join(cfg_dir, "2nd_chance")
@@ -479,7 +483,7 @@ class ModelFuncs(object):
                     opt.next()
 
                 # element change cap
-                if 'step_element_cap' in dir(self.cfg) and self.cfg.step_element_cap is not None:
+                if self.cfg.has('step_element_cap'):
                     d = self.ps.data - last_pars
                     if isinstance(self.cfg.step_element_cap, dict):
                         for par, lim in self.cfg.step_element_cap.iteritems():

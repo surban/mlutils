@@ -4,24 +4,15 @@ import sys
 import theano
 import theano.printing
 import theano.sandbox.cuda
+import theano.tensor as T
 import gnumpy
 import numpy as np
 
-try:
-    gpu_environ = os.environ['BREZE_PARAMETERSET_DEVICE']
-    if gpu_environ == 'gpu':
-        GPU = True
-    elif gpu_environ == 'cpu':
+GPU = theano.config.device == 'gpu'
+if GPU:
+    import theano.sandbox.cuda
+    if not theano.sandbox.cuda.cuda_available:
         GPU = False
-    else:
-        print "BREZE_PARAMETERSET_DEVICE must be either 'cpu' or 'gpu'"
-        sys.exit(1)
-except KeyError:
-    GPU = theano.config.device == 'gpu'
-    if GPU:
-        import theano.sandbox.cuda
-        if not theano.sandbox.cuda.cuda_available:
-            GPU = False
 
 if GPU:
     import theano.misc.gnumpy_utils as gput
@@ -140,7 +131,7 @@ def cpu_expr_to_gpu(expr, unsafe=False):
     If unsafe is set to True, subsequent function calls evaluating the
     expression might return arrays pointing at the same memory region.
     """
-    # expr = T.cast(expr, 'float32')
+    expr = T.cast(expr, 'float32')
     return theano.Out(theano.sandbox.cuda.basic_ops.gpu_from_host(expr),
                       borrow=unsafe)
 
